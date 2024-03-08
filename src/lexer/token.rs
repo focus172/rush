@@ -1,8 +1,6 @@
-use crate::prelude::*;
-
 /// Repersents a Token from the input. The input must outlive this value.
 #[derive(Debug, Clone, PartialEq, Eq, Hash)]
-pub enum Token /* <'a>*/ {
+pub enum Token {
     /// `|`
     Pipe,
     /// `&`
@@ -19,9 +17,8 @@ pub enum Token /* <'a>*/ {
     CloseParen,
     /// `$`
     Doller,
-    /// ` `text` `
-    // BackTick(&'a str),
-    BackTick(String),
+    /// '`'
+    BackTick,
     /// `\c`
     Escape(char),
     /// `"text"`
@@ -30,13 +27,13 @@ pub enum Token /* <'a>*/ {
     /// - <dollar-sign>{captures}
     /// - <backquote>{captures}
     /// - <backslash>{captures}
-    DoubleQuote(String),
+    DoubleQuote,
     /// `'<ident>'`
     ///
     /// Perserves the literal value of the string with the exception of:
     /// - <backslash><singlequote>
     /// - <backslash><backslash><singlequote>
-    SingleQuote(String),
+    SingleQuote,
     /// ` `
     Space,
     /// `\t`
@@ -47,8 +44,10 @@ pub enum Token /* <'a>*/ {
     Glob,
     /// `?`
     Huh,
-    /// `[`
+    /// `{`
     OpenBraket,
+    /// `}`
+    CloseBraket,
     /// `#`
     Pound,
     /// `~`
@@ -58,25 +57,6 @@ pub enum Token /* <'a>*/ {
     /// `%`
     Percent,
     /// Anything Else
+    // Ident(&'a str),
     Ident(String),
-}
-
-#[derive(Debug)]
-pub enum TokenError {
-    CoerceError(Token),
-}
-impl fmt::Display for TokenError {
-    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
-        todo!()
-    }
-}
-impl Context for TokenError {}
-
-impl Token {
-    pub fn as_ident(self) -> Result<String, TokenError> {
-        match self {
-            Token::Ident(s) => Ok(s),
-            t => Err(Report::new(TokenError::CoerceError(t))),
-        }
-    }
 }

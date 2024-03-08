@@ -1,4 +1,4 @@
-#![feature(let_chains)]
+#![feature(let_chains, yeet_expr)]
 
 pub mod cli;
 pub mod lexer;

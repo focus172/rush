@@ -15,7 +15,7 @@ where
     I: Iterator<Item = char>,
 {
     line: Peekable<I>,
-    buff: String,
+    done: bool,
 }
 
 impl<I> Lexer<I>
@@ -26,18 +26,37 @@ where
         Lexer {
             // shell,
             line: input.peekable(),
-            buff: String::new(),
+            done: false,
         }
     }
 
-    /// Returns the buffer if there is anything in it. Otherwise, returns None.
-    fn flush(&mut self) -> Option<String> {
-        if !self.buff.is_empty() {
-            Some(std::mem::take(&mut self.buff))
-        } else {
-            None
+    fn read_ident(&mut self) -> String {
+        let mut buf = String::new();
+
+        loop {
+            let Some(c) = self.line.peek() else {
+                return buf;
+            };
+            // move out of the reference
+            let c = *c;
+
+            match c {
+                ' ' | '\n' => return buf,
+                _ => {
+                    let _ = self.line.next();
+                    buf.push(c)
+                }
+            }
         }
     }
+}
+
+macro_rules! token {
+    ($read:expr, $token:expr) => {{
+        let ref mut iter = $read;
+        let _ = Iterator::next(iter);
+        Some($token)
+    }};
 }
 
 impl<I> Iterator for Lexer<I>
@@ -47,28 +66,52 @@ where
     type Item = Token;
 
     fn next(&mut self) -> Option<Self::Item> {
-        log::trace!("reading next token.");
+        if self.done {
+            // users of this iterator will frequently equast the entire iterator
+            // to make a command which they will return. At which point they
+            // then unknowingly see if there is another command in ready to be
+            // made. This is a gaurd against that case.
+            return None;
+        }
 
-        loop {
-            let Some(next) = self.line.next() else {
-                log::trace!("buffer has not data.");
-                if !self.buff.is_empty() {
-                    log::trace!("clearing internal buffer.");
-                    let buff = std::mem::take(&mut self.buff);
-                    return Some(Token::Ident(buff));
-                }
-                log::trace!("exiting.");
-                return None;
-            };
+        let next = self.line.peek()?;
+        log::trace!("reading token");
 
-            match next {
-                ' ' | '\n' => {
-                    if let Some(buf) = self.flush() {
-                        return Some(Token::Ident(buf));
-                    }
+        match next {
+            '<' => token!(self.line, Token::LeftArrow),
+            '>' => token!(self.line, Token::RightArrow),
+            '(' => token!(self.line, Token::OpenParen),
+            ')' => token!(self.line, Token::CloseParen),
+            '$' => token!(self.line, Token::Doller),
+            '`' => token!(self.line, Token::BackTick),
+            '"' => token!(self.line, Token::DoubleQuote),
+            '\'' => token!(self.line, Token::SingleQuote),
+            '\t' => token!(self.line, Token::Tab),
+            '*' => token!(self.line, Token::Glob),
+            '{' => token!(self.line, Token::OpenBraket),
+            '}' => token!(self.line, Token::CloseBraket),
+            '#' => token!(self.line, Token::Pound),
+            '~' => token!(self.line, Token::Tilde),
+            '=' => token!(self.line, Token::Equal),
+            '%' => token!(self.line, Token::Percent),
+            '\n' => token!(self.line, Token::Newline),
+            ' ' => token!(self.line, Token::Space),
+            '&' => token!(self.line, Token::Amp),
+            '|' => token!(self.line, Token::Pipe),
+            '?' => token!(self.line, Token::Huh),
+            ';' => token!(self.line, Token::SemiColor),
+            '\\' => {
+                let _ = self.line.next(); // the `\` character
+                if let Some(c) = self.line.next() {
+                    Some(Token::Escape(c))
+                } else {
+                    // HACK: i dont know what to do here:
+                    // bash -c "echo \\"
+                    // returns "\" so I think this is fine
+                    Some(Token::Ident(String::from("\\")))
                 }
-                c => self.buff.push(c),
             }
+            _ => Some(Token::Ident(self.read_ident())),
         }
     }
 }
@@ -77,23 +120,6 @@ impl<I> Lexer<I>
 where
     I: Iterator<Item = char>,
 {
-    // fn advance_line(&mut self, shell: &mut Shell) -> Result<(), String> {
-    //     if let Some(s) = shell.next_prompt("> ") {
-    //         self.line = s.chars().collect::<Vec<_>>().into_iter().peekable();
-    //         Ok(())
-    //     } else {
-    //         Err(String::from("expected more input but found one"))
-    //     }
-    // }
-
-    // fn peek_char(&mut self) -> Option<&char> {
-    //     self.line.peek()
-    // }
-    //
-    // fn next_char(&mut self) -> Option<char> {
-    //     self.line.next()
-    // }
-    //
     // fn skip_whitespace(&mut self) {
     //     let mut next = self.peek_char();
     //     while next.is_some() && next.unwrap().is_whitespace() {
@@ -399,22 +425,22 @@ where
 //     Sub(Vec<Expand>),
 // }
 
-// // What the brace does expansion does:
-// // https://pubs.opengroup.org/onlinepubs/9699919799/utilities/V3_chap02.html#tag_18_06_02
-// // If true test for unset or null, if false, only unset
-// // For prefix/suffix, true for largest false for smallest
-// #[derive(Debug, PartialEq)]
-// pub enum Action {
-//     UseDefault(bool),
-//     AssignDefault(bool),
-//     IndicateError(bool),
-//     UseAlternate(bool),
-//     RmSmallestSuffix,
-//     RmLargestSuffix,
-//     RmSmallestPrefix,
-//     RmLargestPrefix,
-//     StringLength,
-// }
+/// What the brace does expansion does:
+/// https://pubs.opengroup.org/onlinepubs/9699919799/utilities/V3_chap02.html#tag_18_06_02
+/// If true test for unset or null, if false, only unset
+/// For prefix/suffix, true for largest false for smallest
+#[derive(Debug, PartialEq)]
+pub enum ExpandAction {
+    // UseDefault(bool),
+    // AssignDefault(bool),
+    // IndicateError(bool),
+    // UseAlternate(bool),
+    // RmSmallestSuffix,
+    // RmLargestSuffix,
+    // RmSmallestPrefix,
+    // RmLargestPrefix,
+    // StringLength,
+}
 
 // impl Expand {
 //     pub fn get_name(self) -> String {
@@ -445,41 +471,29 @@ where
 //     Semicolon,
 // }
 
-// This representation makes it's functions very nice and easy,
-// but I'm not convinced that this is the most efficient/clean
-// the struct itself can be
+#[cfg(test)]
+mod test {
+    use super::Lexer;
+    use super::Token;
+    use crate::util::char::OwnedChars;
 
-// fn invalid_var(c: char) -> bool {
-//     matches!(
-//         c,
-//         '&' | '!' | '|' | '<' | '>' | '"' | '=' | ':' | '}' | '+' | '-' | '?' | '$' | '\\' | ')'
-//     ) || c.is_whitespace()
-// }
-//
-// fn is_token_split(c: char) -> bool {
-//     matches!(c, '&' | '!' | '|' | '<' | '>' | '=') || c.is_whitespace()
-// }
-
-// #[cfg(test)]
-// mod lexer_tests {
-//     use super::{Expand::*, Lexer, Op, Token::*};
-//     use crate::helpers::Shell;
-//     use std::cell::RefCell;
-//     use std::rc::Rc;
-//
-//     #[test]
-//     fn test_lexer() {
-//         let mut shell = Shell::new();
-//         let mut lexer = Lexer::new("exa -1 | grep cargo");
-//         let expected = [
-//             Word(vec![Literal(String::from("exa"))]),
-//             Word(vec![Literal(String::from("-1"))]),
-//             Op(Op::Pipe),
-//             Word(vec![Literal(String::from("grep"))]),
-//             Word(vec![Literal(String::from("cargo"))]),
-//         ];
-//         for token in &expected {
-//             assert_eq!(*token, lexer.next_token(&mut shell).unwrap())
-//         }
-//     }
-// }
+    #[test]
+    fn lex() {
+        let input = String::from("exa -1 | grep cargo");
+        let mut lexer = Lexer::new(OwnedChars::new(input));
+        let expected = [
+            Token::Ident(String::from("exa")),
+            Token::Space,
+            Token::Ident(String::from("-1")),
+            Token::Space,
+            Token::Pipe,
+            Token::Space,
+            Token::Ident(String::from("grep")),
+            Token::Space,
+            Token::Ident(String::from("cargo")),
+        ];
+        for token in expected {
+            assert_eq!(Some(token), lexer.next())
+        }
+    }
+}

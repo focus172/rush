@@ -1,4 +1,4 @@
-// pub mod ast;
+pub mod ast;
 pub mod cmd;
 mod parser;
 mod prompter;

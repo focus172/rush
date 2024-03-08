@@ -1,6 +1,8 @@
 # Rush
 I know that the name is overused, but it's too good to pass up.
 
+    "ashpil <ashpil@pm.me>",
+
 ## Pipeline
 The shell takes a parser and the parser takes a lexer, the lexer takes a data
 steam. Each component can be swapped for maximum reuse.

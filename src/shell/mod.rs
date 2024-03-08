@@ -1,6 +1,8 @@
 use crate::prelude::*;
 
+mod builtins;
 mod driver;
+mod state;
 
 // use nix::unistd::Uid;
 // use os_pipe::{dup_stderr, dup_stdin, dup_stdout, PipeReader, PipeWriter};
@@ -12,6 +14,7 @@ mod driver;
 use crate::parse::cmd::{Cmd, CmdError};
 
 use self::driver::Driver;
+use self::state::ShellState;
 
 #[derive(Debug)]
 pub enum ShellError {
@@ -35,6 +38,7 @@ where
 {
     cmds: I,
     driver: Driver,
+    state: ShellState,
     interactive: bool,
 }
 
@@ -50,16 +54,18 @@ where
     pub fn eval(cmds: I) -> Shell<I> {
         Shell {
             cmds,
-            interactive: false,
+            state: ShellState::default(),
             driver: Driver::default(),
+            interactive: false,
         }
     }
 
     pub fn interactive(cmds: I) -> Shell<I> {
         Shell {
             cmds,
-            interactive: true,
+            state: ShellState::default(),
             driver: Driver::default(),
+            interactive: true,
         }
     }
 
@@ -82,27 +88,29 @@ where
     /// happens.
     pub fn run(self) -> Result<(), ShellError> {
         let mut shell = self;
+
         for res in shell.cmds {
-            let cmd = if shell.interactive {
-                res.change_context(ShellError::ParseError)?
-            } else {
-                match res {
-                    Ok(cmd) => cmd,
-                    Err(e) => {
+            let cmd = {
+                match (res, shell.interactive) {
+                    (Ok(cmd), _) => cmd,
+                    (Err(e), true) => {
                         eprintln!("{:?}", e);
                         continue;
                     }
+                    (Err(e), false) => do yeet e.change_context(ShellError::ParseError),
                 }
             };
 
-            shell.driver.run(cmd).unwrap();
+            shell.driver.run(cmd, &mut shell.state).unwrap();
+
+            if shell.state.exit {
+                log::info!("force exiting.");
+                return Ok(());
+            }
         }
+        log::info!("no more commands.");
 
         Ok(())
-    }
-
-    fn is_interactive(&self) -> bool {
-        self.interactive
     }
 
     // pub fn next_prompt(&mut self, prompt: &str) -> Option<String> {

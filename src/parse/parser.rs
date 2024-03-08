@@ -30,7 +30,13 @@ where
                 return Ok(cmd.build());
             };
 
+            // Todo: things build args and then spaces deliminate them.
+            // This way args can contain variables and other as many tokens
+            // not one. This reduces the load on the tokenizer.
+
             match token {
+                Token::Newline => return Ok(cmd.build()),
+
                 Token::Pipe => todo!(),
                 Token::Amp => todo!(),
                 Token::SemiColor => todo!(),
@@ -39,20 +45,21 @@ where
                 Token::OpenParen => todo!(),
                 Token::CloseParen => todo!(),
                 Token::Doller => todo!(),
-                Token::BackTick(_) => todo!(),
+                Token::BackTick => todo!(),
                 Token::Escape(_) => todo!(),
-                Token::DoubleQuote(_) => todo!(),
-                Token::SingleQuote(_) => todo!(),
-                Token::Space => todo!(),
+                Token::DoubleQuote => todo!(),
+                Token::SingleQuote => todo!(),
                 Token::Tab => todo!(),
-                Token::Newline => todo!(),
                 Token::Glob => todo!(),
                 Token::OpenBraket => todo!(),
+                Token::CloseBraket => todo!(),
                 Token::Pound => todo!(),
                 Token::Tilde => todo!(),
                 Token::Equal => todo!(),
                 Token::Percent => todo!(),
                 Token::Ident(d) => cmd.push_ident(d),
+
+                Token::Space => {}
 
                 // Cant Start an expression
                 Token::Huh => todo!(),
@@ -70,6 +77,8 @@ where
     fn next(&mut self) -> Option<Self::Item> {
         // when there are no tokens left return
         self.tokens.peek()?;
+
+        log::trace!("getting next command.");
 
         Some(self.get_next())
     }
