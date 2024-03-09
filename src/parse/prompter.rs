@@ -9,41 +9,9 @@ use crate::{lexer::Lexer, prelude::*};
 use super::cmd::{Cmd, CmdError};
 use super::parser::Parser;
 
+#[derive(Default)]
 pub struct Prompter {
     commads: Option<Box<dyn Iterator<Item = Result<Cmd, CmdError>>>>,
-}
-
-impl Prompter {
-    pub fn new() -> Self {
-        Self { commads: None }
-
-        // let stdin = std::io::stdin();
-        // let l = stdin.lock();
-
-        // let shell = Shell::new();
-
-        // let input = argv.join(" ").chars();
-        //
-        // let lexer = Lexer::new(input);
-        // let mut parser = Parser::new(lexer, shell);
-        // parser.get()
-        //
-        // let a = std::io::stdin();
-        // let b = a.lock();
-        // todo!()
-        // let (lines, interactive, name): (Lines<Box<dyn BufRead>>, bool, String) = (
-        //     Lines::new(Box::new(BufReader::new(io::stdin()))),
-        //     true,
-        //     String::from("rush"),
-        // );
-        // Shell {
-        //     lines,
-        //     interactive,
-        //     positional: Vec::new(),
-        //     name,
-        //     vars: HashMap::new(),
-        // }
-    }
 }
 
 impl Iterator for Prompter {

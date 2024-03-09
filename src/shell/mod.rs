@@ -1,8 +1,11 @@
+use std::sync::Arc;
+
 use crate::prelude::*;
 
 mod builtins;
 mod driver;
 mod state;
+mod task;
 
 // use nix::unistd::Uid;
 // use os_pipe::{dup_stderr, dup_stdin, dup_stdout, PipeReader, PipeWriter};
@@ -11,20 +14,24 @@ mod state;
 // use std::io::{self, BufRead, BufReader, Write};
 // use std::process::{self, Stdio};
 
-use crate::parse::cmd::{Cmd, CmdError};
+use crate::parse::cmd::{Cmd, CmdError, Streams};
 
 use self::driver::Driver;
 use self::state::ShellState;
 
 #[derive(Debug)]
 pub enum ShellError {
-    ParseError,
+    Parse,
+    Spawn,
+    Task,
 }
 
 impl fmt::Display for ShellError {
     fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
         match self {
-            ShellError::ParseError => f.write_str("failed to parse input"),
+            ShellError::Parse => f.write_str("failed to parse input"),
+            ShellError::Spawn => f.write_str("failed spawn thing"),
+            ShellError::Task => f.write_str("background task had a problem"),
         }
     }
 }
@@ -36,10 +43,10 @@ pub struct Shell<I>
 where
     I: Iterator<Item = Result<Cmd, CmdError>>,
 {
-    cmds: I,
-    driver: Driver,
-    state: ShellState,
-    interactive: bool,
+    cmmds: I,
+    // drive: Driver,
+    // taskp: Vec<Task>,
+    state: Arc<ShellState>,
 }
 
 impl<I> Shell<I>
@@ -51,21 +58,12 @@ where
     ///
     /// This argument is ussaually a [`Lexer`] but is generic so it can take
     /// many types of lexers.
-    pub fn eval(cmds: I) -> Shell<I> {
+    pub fn new(cmmds: I) -> Shell<I> {
         Shell {
-            cmds,
-            state: ShellState::default(),
-            driver: Driver::default(),
-            interactive: false,
-        }
-    }
-
-    pub fn interactive(cmds: I) -> Shell<I> {
-        Shell {
-            cmds,
-            state: ShellState::default(),
-            driver: Driver::default(),
-            interactive: true,
+            cmmds,
+            state: Arc::new(ShellState::default()),
+            // drive: Driver,
+            // taskp: Vec::default(),
         }
     }
 
@@ -86,24 +84,58 @@ where
     /// When this is ran as a login shell it will refuse to panic or error.
     /// The shell will attempt to restart itself whenever some thing bad
     /// happens.
-    pub fn run(self) -> Result<(), ShellError> {
+    pub async fn run(self, interactive: bool) -> Result<(), ShellError> {
         let mut shell = self;
+        // let mut hand = Vec::new();
 
-        for res in shell.cmds {
+        for res in shell.cmmds {
+            // let (tx, mut rx) = tokio::sync::mpsc::channel::<i32>(16);
+
             let cmd = {
-                match (res, shell.interactive) {
+                match (res, interactive) {
                     (Ok(cmd), _) => cmd,
                     (Err(e), true) => {
                         eprintln!("{:?}", e);
                         continue;
                     }
-                    (Err(e), false) => do yeet e.change_context(ShellError::ParseError),
+                    (Err(e), false) => do yeet e.change_context(ShellError::Parse),
                 }
             };
 
-            shell.driver.run(cmd, &mut shell.state).unwrap();
+            let res = Driver::run(cmd, Streams::default(), &mut shell.state);
 
-            if shell.state.exit {
+            let handles = match (res, interactive) {
+                (Ok(a), _) => a,
+                (Err(e), true) => {
+                    eprintln!("{:?}", e);
+                    continue;
+                }
+                (Err(e), false) => do yeet e.change_context(ShellError::Spawn),
+            };
+
+            for h in handles {
+                h.wait().await;
+            }
+
+            // while let Some(a) = rx.recv().await {
+            //     read += 1;
+            //     eprintln!("process had status: {}", a);
+            //
+            //     if read >= count {
+            //         break;
+            //     }
+            // }
+
+            let Some(s) = Arc::get_mut(&mut shell.state) else {
+                do yeet Report::new(ShellError::Task).attach_printable(
+                    "attempted to get shell state but failed. This means \
+                        that there is still something that holds a reference \
+                        to it. This can only happen if shell builtin is \
+                        backgrounded which should not be possible.",
+                );
+            };
+
+            if *s.exit.get_mut() {
                 log::info!("force exiting.");
                 return Ok(());
             }

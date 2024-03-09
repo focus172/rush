@@ -1,5 +1,5 @@
 use crate::{prelude::*, util::smap::StaticMap};
-use std::os::fd::RawFd;
+use std::process::Stdio;
 
 #[derive(Debug)]
 pub enum CmdError {
@@ -124,22 +124,22 @@ pub struct SimpleCmd {
     pub cmd: String,
     pub args: Vec<String>,
     pub env: StaticMap<String, String>,
-    pub streams: Streams,
+    // pub streams: Streams,
 }
 
-#[derive(Debug, PartialEq, Eq)]
+#[derive(Debug)]
 pub struct Streams {
-    pub stdin: RawFd,
-    pub stdout: RawFd,
-    pub stderr: RawFd,
+    pub stdin: Stdio,
+    pub stdout: Stdio,
+    pub stderr: Stdio,
 }
 
 impl Default for Streams {
     fn default() -> Self {
         Self {
-            stdin: RawFd::from(0),
-            stdout: RawFd::from(1),
-            stderr: RawFd::from(2),
+            stdin: Stdio::inherit(),
+            stdout: Stdio::inherit(),
+            stderr: Stdio::inherit(),
         }
     }
 }

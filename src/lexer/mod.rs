@@ -6,7 +6,6 @@
 mod token;
 pub use token::Token;
 
-use crate::prelude::*;
 use std::iter::Peekable;
 
 /// An iterator wrapper that converts any char steam to token steam.
@@ -53,7 +52,7 @@ where
 
 macro_rules! token {
     ($read:expr, $token:expr) => {{
-        let ref mut iter = $read;
+        let iter = &mut $read;
         let _ = Iterator::next(iter);
         Some($token)
     }};

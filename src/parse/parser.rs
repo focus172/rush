@@ -37,7 +37,10 @@ where
             match token {
                 Token::Newline => return Ok(cmd.build()),
 
-                Token::Pipe => todo!(),
+                Token::Pipe => {
+                    let c = cmd.build();
+                    return Ok(Cmd::Pipeline(Box::new(c), Box::new(self.get_next()?)));
+                }
                 Token::Amp => todo!(),
                 Token::SemiColor => todo!(),
                 Token::LeftArrow => todo!(),

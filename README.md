@@ -1,7 +1,5 @@
 # Rush
-I know that the name is overused, but it's too good to pass up.
-
-    "ashpil <ashpil@pm.me>",
+Adapted from a project of the same name by `ashpil@pm.me`
 
 ## Pipeline
 The shell takes a parser and the parser takes a lexer, the lexer takes a data
@@ -9,47 +7,42 @@ steam. Each component can be swapped for maximum reuse.
 
 ## Iterator
 Everything is made using iterators meaning that hypothetically a file that
-contains `echo hello` followed by 100,000 lines of comments will:
+contains `echo hello world` followed by 100,000,000 lines of comments will:
     - not have memory problems
     - will print 'hello' before the file finishes reading
 
-## TODO
+## To Do
 - [X] Simple command execution `ls -ltr`
 - [X] Pipes `exa | grep cargo`
-- [X] Exit status logic `! false && ls || date`
+- [ ] Exit status logic `! false && ls || date`
 - [ ] Redirection
-    - [X] File descriptor to another `ls error 2>&1`
-    - [X] To/from file `date > time.txt` `< Cargo.toml wc`
-    - [X] Appending `>>`
-    - [X] Here-docs `<<`
+    - [ ] File descriptor to another `ls error 2>&1`
+    - [ ] To/from file `date > time.txt` `< Cargo.toml wc`
+    - [ ] Appending `>>`
+    - [ ] Here-docs `<<`
     - [ ] Raw, non-io file descriptors `4>&7`
 - [ ] Async execution `&`
 - [ ] Shell builtins
    - [ ] Normal built-ins
       - [ ] `alias` `unalias`
-      - [X] `cd`
+      - [ ] `cd`
       - [ ] etc
    - [ ] Special built-ins
-      - [X] `exit`
+      - [ ] `exit`
       - [ ] `export`
       - [ ] `exec`
       - [ ] etc
 - [ ] Expansions
-   - [X] Tilde expansion `ls ~`
+   - [ ] Tilde expansion `ls ~`
    - [ ] Parameter expansion
-      - [X] Basic expansion `echo ${var:-other}`
+      - [ ] Basic expansion `echo ${var:-other}`
       - [ ] String length `echo ${#var}`
       - [ ] Suffix/prefix removal `echo ${var%%pattern}`
-   - [X] Command substitution
+   - [ ] Command substitution
    - [ ] Arithmetic expansion
-- [X] Variables
-- [X] Quotes
+- [ ] Variables
+- [ ] Quotes
 - [ ] IFS
 - [ ] Functions
 - [ ] Control flow `if` `for` `while` `case` etc
 - [ ] Expand this to-do list
-
-
-### Decisions to make
-* Should this shell replicate commands that are typically built-in but also
-    have system alternatives?
