@@ -1,16 +1,135 @@
-use crate::{prelude::*, util::smap::StaticMap};
+use crate::shell::ShellState;
+use crate::util::OwnedCharBuffer;
+use crate::util::StaticMap;
+use crate::walker::TreeItem;
+use crate::{lexer::Lexer, walker::Walker};
+
+use std::iter::Peekable;
 use std::process::Stdio;
+
+use crate::prelude::*;
+
+/// The parser reads in tokens and converts them into commands.
+/// Parser takes in a token stream and outputs commands.
+pub(crate) struct Parser<I>
+where
+    I: Iterator<Item = Token>,
+{
+    tokens: Peekable<Walker<I>>,
+}
+
+impl<I> Parser<I>
+where
+    I: Iterator<Item = Token>,
+{
+    pub fn new(tokens: I) -> Parser<I> {
+        Parser {
+            tokens: Walker::new(tokens).peekable(),
+        }
+    }
+
+    pub fn next(&mut self, state: &ShellState) -> Option<Result<Cmd, CmdError>> {
+        // when there are no tokens left return
+        self.tokens.peek()?;
+
+        log!("getting next command.");
+
+        Some(self.get_next(state))
+    }
+
+    fn get_next(&mut self, state: &ShellState) -> Result<Cmd, CmdError> {
+        let mut cmd = SimpleCmd::default();
+        loop {
+            let Some(token) = self.tokens.next() else {
+                return Ok(cmd.build());
+            };
+            log!("got token: {:?}", token);
+
+            // Todo: things build args and then spaces deliminate them.
+            // This way args can contain variables and other as many tokens
+            // not one. This reduces the load on the tokenizer.
+
+            match token {
+                TreeItem::Word(v) => {
+                    let a =
+                        v.into_iter()
+                            .map(|e| e.expand(state))
+                            .fold(String::new(), |mut s, e| {
+                                s.push_str(&e);
+                                s
+                            });
+                    cmd.push_ident(a);
+                }
+                TreeItem::Or => {
+                    let c = cmd.build();
+                    return Ok(Cmd::Or(Box::new(c), Box::new(self.get_next(state)?)));
+                }
+                TreeItem::And => {
+                    let c = cmd.build();
+                    return Ok(Cmd::And(Box::new(c), Box::new(self.get_next(state)?)));
+                }
+                TreeItem::Pipe => {
+                    let c = cmd.build();
+                    return Ok(Cmd::Pipeline(Box::new(c), Box::new(self.get_next(state)?)));
+                }
+                TreeItem::Subshell(tokens) => {
+                    let s = Shell::sourced(tokens.into_iter());
+                    s.run(false).change_context(CmdError::SubShell)?;
+                }
+                TreeItem::StatmentEnd => return Ok(cmd.build()),
+                TreeItem::Assign(_, _) => todo!(),
+                TreeItem::Append => todo!(),
+                TreeItem::Redirect => todo!(),
+                TreeItem::Background => todo!(),
+                TreeItem::Comment(_) => todo!(),
+            }
+        }
+    }
+}
+
+/// Prompter reads user input. Then creates a [`Parser`] to turn it into
+/// commands.
+#[derive(Default)]
+pub(crate) struct Prompter {
+    commads: Option<Parser<Lexer<OwnedCharBuffer>>>,
+}
+
+impl Prompter {
+    pub fn next(&mut self, state: &ShellState) -> Option<Result<Cmd, CmdError>> {
+        use std::io::Write;
+
+        loop {
+            if let Some(cmd) = self.commads.as_mut().and_then(|i| i.next(state)) {
+                return Some(cmd);
+            }
+
+            print!("$> ");
+            io::stdout().flush().unwrap();
+            let s = std::io::stdin();
+            let mut line = String::new();
+            s.read_line(&mut line).unwrap();
+            // let line = std::io::stdin().lines().next()?.unwrap();
+
+            log!("got line: {}", line.trim());
+
+            let p = Parser::new(Lexer::new(OwnedCharBuffer::new(line)));
+            _ = self.commads.insert(p);
+        }
+    }
+}
 
 #[derive(Debug)]
 pub enum CmdError {
     BadToken(Token),
     MissingName,
+    SubShell,
 }
 impl fmt::Display for CmdError {
     fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
         match self {
             CmdError::BadToken(t) => write!(f, "invalid token recieved: {:?}", t),
             CmdError::MissingName => f.write_str("a name is needed to call it"),
+            CmdError::SubShell => f.write_str("Error in subshell. This could recurse."),
         }
     }
 }

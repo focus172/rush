@@ -1,11 +1,5 @@
-use std::sync::Arc;
-
+use crate::parse::{Parser, Prompter};
 use crate::prelude::*;
-
-mod builtins;
-mod driver;
-mod state;
-mod task;
 
 // use nix::unistd::Uid;
 // use os_pipe::{dup_stderr, dup_stdin, dup_stdout, PipeReader, PipeWriter};
@@ -14,10 +8,50 @@ mod task;
 // use std::io::{self, BufRead, BufReader, Write};
 // use std::process::{self, Stdio};
 
-use crate::parse::cmd::{Cmd, CmdError, Streams};
+use crate::parse::{Cmd, CmdError, Streams};
 
-use self::driver::Driver;
-use self::state::ShellState;
+use crate::drive::Driver;
+
+// use crate::util::StaticMap;
+
+#[derive(Debug)]
+pub(crate) struct ShellState {
+    pub exit: bool,
+    home: String,
+    // __cache: StaticMap<String, String>,
+}
+
+impl Default for ShellState {
+    fn default() -> Self {
+        Self {
+            exit: false,
+            home: std::env::var("HOME").unwrap(),
+            // __cache: StaticMap::new()
+        }
+    }
+}
+impl ShellState {
+    pub fn home(&self) -> &str {
+        &self.home
+    }
+
+    pub fn get_env_exact(&self, key: &str) -> Option<String> {
+        std::env::var(key).ok()
+    }
+
+    /// Gets an variable from the current scope. This matches on the smallest
+    /// substring first. it returns the rest of the unmatched slice as the
+    /// second. if the variable doesn't exist it will return ("", key).
+    pub fn get_env<'a>(&'a self, key: &'a str) -> (String, &'a str) {
+        for i in 0..key.len() {
+            log!("trying key: {}", &key[0..i + 1]);
+            if let Some(v) = self.get_env_exact(&key[0..i + 1]) {
+                return (v, &key[i + 1..]);
+            }
+        }
+        (String::new(), key)
+    }
+}
 
 #[derive(Debug)]
 pub enum ShellError {
@@ -37,38 +71,63 @@ impl fmt::Display for ShellError {
 }
 impl Context for ShellError {}
 
+pub(crate) enum CommandSource<I>
+where
+    I: Iterator<Item = Token>,
+{
+    Interactive(Prompter),
+    NonInteractively(Parser<I>),
+}
+
+impl<I> CommandSource<I>
+where
+    I: Iterator<Item = Token>,
+{
+    pub fn next(&mut self, state: &ShellState) -> Option<Result<Cmd, CmdError>> {
+        match self {
+            CommandSource::Interactive(i) => i.next(state),
+            CommandSource::NonInteractively(s) => s.next(state),
+        }
+    }
+}
+
 /// The shell works through a cycle of getting some tokens. Collecting them
 /// into a Command. Then running it.
 pub struct Shell<I>
 where
-    I: Iterator<Item = Result<Cmd, CmdError>>,
+    I: Iterator<Item = Token>,
 {
-    cmmds: I,
-    // drive: Driver,
+    cmmds: CommandSource<I>,
+    state: ShellState,
     // taskp: Vec<Task>,
-    state: Arc<ShellState>,
+}
+impl Shell<std::iter::Empty<Token>> {
+    pub fn interactive() -> Shell<std::iter::Empty<Token>> {
+        Shell {
+            cmmds: CommandSource::Interactive(Prompter::default()),
+            state: ShellState::default(),
+        }
+    }
+
+    pub fn login() -> Shell<std::iter::Empty<Token>> {
+        panic!("I'm not ready for this shit yet. Try next year.")
+    }
 }
 
 impl<I> Shell<I>
 where
-    I: Iterator<Item = Result<Cmd, CmdError>>,
+    I: Iterator<Item = Token>,
 {
     /// Contructs a new shell in command mode. The given input will be run until
     /// exhaustion then the shell will exit.
     ///
     /// This argument is ussaually a [`Lexer`] but is generic so it can take
     /// many types of lexers.
-    pub fn new(cmmds: I) -> Shell<I> {
+    pub fn sourced(tokens: I) -> Shell<I> {
         Shell {
-            cmmds,
-            state: Arc::new(ShellState::default()),
-            // drive: Driver,
-            // taskp: Vec::default(),
+            cmmds: CommandSource::NonInteractively(Parser::new(tokens)),
+            state: ShellState::default(),
         }
-    }
-
-    pub fn login(_cmds: I) -> Shell<I> {
-        panic!("I'm not ready for this shit yet. Try next year.")
     }
 
     /// Runs the main event loop for this shell. Gets commands from the its
@@ -84,11 +143,10 @@ where
     /// When this is ran as a login shell it will refuse to panic or error.
     /// The shell will attempt to restart itself whenever some thing bad
     /// happens.
-    pub async fn run(self, interactive: bool) -> Result<(), ShellError> {
-        let mut shell = self;
+    pub fn run(mut self, interactive: bool) -> Result<(), ShellError> {
         // let mut hand = Vec::new();
 
-        for res in shell.cmmds {
+        while let Some(res) = self.cmmds.next(&self.state) {
             // let (tx, mut rx) = tokio::sync::mpsc::channel::<i32>(16);
 
             let cmd = {
@@ -98,11 +156,11 @@ where
                         eprintln!("{:?}", e);
                         continue;
                     }
-                    (Err(e), false) => do yeet e.change_context(ShellError::Parse),
+                    (Err(e), false) => return Err(e.change_context(ShellError::Parse)),
                 }
             };
 
-            let res = Driver::run(cmd, Streams::default(), &mut shell.state);
+            let res = Driver::run(cmd, Streams::default(), &mut self.state);
 
             let handles = match (res, interactive) {
                 (Ok(a), _) => a,
@@ -110,11 +168,14 @@ where
                     eprintln!("{:?}", e);
                     continue;
                 }
-                (Err(e), false) => do yeet e.change_context(ShellError::Spawn),
+                (Err(e), false) => return Err(e.change_context(ShellError::Spawn)),
             };
 
             for h in handles {
-                h.wait().await;
+                let _ = h
+                    .wait()
+                    .change_context(ShellError::Spawn)
+                    .attach("task had internal error")?;
             }
 
             // while let Some(a) = rx.recv().await {
@@ -126,21 +187,12 @@ where
             //     }
             // }
 
-            let Some(s) = Arc::get_mut(&mut shell.state) else {
-                do yeet Report::new(ShellError::Task).attach_printable(
-                    "attempted to get shell state but failed. This means \
-                        that there is still something that holds a reference \
-                        to it. This can only happen if shell builtin is \
-                        backgrounded which should not be possible.",
-                );
-            };
-
-            if *s.exit.get_mut() {
-                log::info!("force exiting.");
+            if self.state.exit {
+                log!("force exiting.");
                 return Ok(());
             }
         }
-        log::info!("no more commands.");
+        log!("no more commands.");
 
         Ok(())
     }
@@ -186,20 +238,3 @@ where
     //     }
     // }
 }
-
-// impl Iterator for Shell {
-//     type Item = String;
-//
-//     fn next(&mut self) -> Option<String> {
-//         if self.is_interactive() {
-//             if Uid::current().is_root() {
-//                 print!("#> ");
-//             } else {
-//                 print!("$> ");
-//             }
-//             io::stdout().flush().unwrap();
-//         }
-//         self.lines.next()
-//     }
-// }
-//
