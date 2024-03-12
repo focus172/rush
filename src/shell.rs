@@ -1,3 +1,4 @@
+use crate::drive::run_command;
 use crate::parse::{Parser, Prompter};
 use crate::prelude::*;
 
@@ -7,29 +8,34 @@ use crate::prelude::*;
 // use std::fs::{File, OpenOptions};
 // use std::io::{self, BufRead, BufReader, Write};
 // use std::process::{self, Stdio};
-
-use crate::parse::{Cmd, CmdError, Streams};
-
-use crate::drive::Driver;
-
 // use crate::util::StaticMap;
 
+use crate::parse::{Cmd, CmdError, Streams};
+// use crate::util::AtomicSlice;
+// use crate::walker::TreeItem;
+
 #[derive(Debug)]
-pub(crate) struct ShellState {
+pub struct ShellState {
     pub exit: bool,
     home: String,
+    /// The most recent exit status of a command
+    prev: i32,
     // __cache: StaticMap<String, String>,
+    hist: Vec<String>,
 }
 
 impl Default for ShellState {
     fn default() -> Self {
         Self {
             exit: false,
+            prev: 0,
             home: std::env::var("HOME").unwrap(),
             // __cache: StaticMap::new()
+            hist: Vec::new(),
         }
     }
 }
+
 impl ShellState {
     pub fn home(&self) -> &str {
         &self.home
@@ -50,6 +56,20 @@ impl ShellState {
             }
         }
         (String::new(), key)
+    }
+
+    pub fn get_history(&self, index: usize) -> Option<&str> {
+        let leng = self.hist.len();
+        if index > leng {
+            None
+        } else {
+            self.hist.get(leng - index).map(|s| s.as_str())
+        }
+    }
+
+    /// Adds a command to this shells history
+    pub fn add_history(&mut self, item: impl Into<String>) {
+        self.hist.push(item.into())
     }
 }
 
@@ -83,7 +103,7 @@ impl<I> CommandSource<I>
 where
     I: Iterator<Item = Token>,
 {
-    pub fn next(&mut self, state: &ShellState) -> Option<Result<Cmd, CmdError>> {
+    pub fn next(&mut self, state: &mut ShellState) -> Option<Result<Cmd, CmdError>> {
         match self {
             CommandSource::Interactive(i) => i.next(state),
             CommandSource::NonInteractively(s) => s.next(state),
@@ -113,6 +133,37 @@ impl Shell<std::iter::Empty<Token>> {
         panic!("I'm not ready for this shit yet. Try next year.")
     }
 }
+
+// Sudo code for how this could be inplemented
+// fn poll(//
+//     // reader: AtomicSlice<u8>
+//     // lexxer: todo!()
+//     // walker: Walker
+//     // parser: Parser
+// ) -> Option<()> {
+//     fn get_next_charr(reader: AtomicSlice<u8>) -> Option<Option<char>> {
+//         todo!()
+//     }
+//
+//     fn get_next_token() -> Option<Option<Token>> {
+//         todo!()
+//     }
+//
+//     fn get_next_astre() -> Option<Option<TreeItem>> {
+//         todo!()
+//     }
+//
+//     fn get_next_comnd() -> Option<Option<Cmd>> {
+//         todo!()
+//     }
+//
+//     // let c = get_next_charr(reader)?;
+//     // let t = get_next_token(lexxer, c)?;
+//     // let a = get_next_astre(walker, t)?;
+//     // let c = get_next_comnd(parser, t)?;
+//     // let e = run_comnd(c).unwrap();
+//     todo!()
+// }
 
 impl<I> Shell<I>
 where
@@ -144,11 +195,7 @@ where
     /// The shell will attempt to restart itself whenever some thing bad
     /// happens.
     pub fn run(mut self, interactive: bool) -> Result<(), ShellError> {
-        // let mut hand = Vec::new();
-
-        while let Some(res) = self.cmmds.next(&self.state) {
-            // let (tx, mut rx) = tokio::sync::mpsc::channel::<i32>(16);
-
+        while let Some(res) = self.cmmds.next(&mut self.state) {
             let cmd = {
                 match (res, interactive) {
                     (Ok(cmd), _) => cmd,
@@ -160,7 +207,7 @@ where
                 }
             };
 
-            let res = Driver::run(cmd, Streams::default(), &mut self.state);
+            let res = run_command(cmd, Streams::default(), &mut self.state);
 
             let handles = match (res, interactive) {
                 (Ok(a), _) => a,
@@ -172,23 +219,12 @@ where
             };
 
             for h in handles {
-                let _ = h
-                    .wait()
-                    .change_context(ShellError::Spawn)
-                    .attach("task had internal error")?;
+                self.state.prev = h.wait().change_context(ShellError::Spawn)?;
+                // .attach("task had internal error")?;
             }
 
-            // while let Some(a) = rx.recv().await {
-            //     read += 1;
-            //     eprintln!("process had status: {}", a);
-            //
-            //     if read >= count {
-            //         break;
-            //     }
-            // }
-
             if self.state.exit {
-                log!("force exiting.");
+                log!("exiting beacuse flag was set");
                 return Ok(());
             }
         }

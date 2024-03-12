@@ -2,6 +2,8 @@ use std::fmt::Display;
 
 use crate::prelude::*;
 
+#[derive(Debug)]
+#[must_use]
 pub enum Task {
     System(std::process::Child),
     Builtin(i32),

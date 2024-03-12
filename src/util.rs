@@ -1,4 +1,8 @@
-use std::mem;
+use std::{
+    fmt::Debug,
+    mem,
+    sync::{atomic::AtomicPtr, Arc},
+};
 
 /// An iterator over an owned set of chars.
 ///
@@ -13,44 +17,21 @@ use std::mem;
 /// source: https://stackoverflow.com/a/47207490
 pub(crate) struct OwnedCharBuffer {
     _s: String,
-    index: usize,
-    next: Option<char>,
     /// the chars here are borrowed from the above string
     chars: std::str::Chars<'static>,
 }
 
-impl OwnedCharBuffer {
-    pub fn new(s: String) -> Self {
+impl From<String> for OwnedCharBuffer {
+    fn from(value: String) -> Self {
         // safety: chars will not escape the scope of this object
-        let chars = unsafe { mem::transmute(s.chars()) };
-        Self {
-            _s: s,
-            index: 0,
-            next: None,
-            chars,
-        }
+        let chars = unsafe { mem::transmute(value.chars()) };
+        Self { _s: value, chars }
     }
+}
 
-    pub fn index(&self) -> usize {
-        self.index
-    }
-
-    pub fn get_slice(&self, str: usize, end: usize) -> Option<&str> {
-        debug_assert!(str <= end);
-        if end > self._s.len() {
-            None
-        } else {
-            Some(&self._s[str..end])
-        }
-    }
-
-    pub fn peek(&mut self) -> Option<char> {
-        if let Some(n) = self.next.as_ref() {
-            Some(*n)
-        } else {
-            self.next = self.chars.next();
-            self.next
-        }
+impl OwnedCharBuffer {
+    pub fn new(value: String) -> Self {
+        Self::from(value)
     }
 }
 
@@ -58,10 +39,7 @@ impl Iterator for OwnedCharBuffer {
     type Item = char;
 
     fn next(&mut self) -> Option<Self::Item> {
-        self.next.take().or_else(|| {
-            self.index += 1;
-            self.chars.next()
-        })
+        self.chars.next()
     }
 }
 
@@ -108,5 +86,152 @@ impl<K, V> IntoIterator for StaticMap<K, V> {
 
     fn into_iter(self) -> Self::IntoIter {
         self.0.into_iter()
+    }
+}
+
+/// An Atomic Buffer is a growable data structure that can give give read only
+/// acsess to data it has already written.
+///
+/// You can only push to it as removing data might cause veiws into it to
+/// become invalid.
+pub(crate) struct AtomicBuffer<T> {
+    ptr: Arc<AtomicPtr<T>>,
+    len: usize,
+    cap: usize,
+}
+
+impl<T: Debug> Debug for AtomicBuffer<T> {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        use std::sync::atomic::Ordering;
+        let mut d = f.debug_list();
+
+        let _ = self
+            .ptr
+            .fetch_update(Ordering::Relaxed, Ordering::Relaxed, |ptr| {
+                // todo
+                for i in 0..=self.len {
+                    d.entry(&unsafe { ptr.add(i).read() });
+                }
+
+                None
+            });
+        d.finish()
+    }
+}
+
+impl<T: Clone> AtomicBuffer<T> {
+    pub fn new() -> Self {
+        let inner = Vec::new();
+        let (ptr, len, cap) = inner.into_raw_parts();
+        let ptr = AtomicPtr::new(ptr);
+        Self {
+            ptr: Arc::new(ptr),
+            len,
+            cap,
+        }
+    }
+
+    pub fn push(&mut self, value: T) {
+        use std::sync::atomic::Ordering;
+        let _ = self
+            .ptr
+            .fetch_update(Ordering::SeqCst, Ordering::SeqCst, |ptr| {
+                let mut v = unsafe { Vec::from_raw_parts(ptr, self.len, self.cap) };
+                v.push(value.clone());
+                let (new_ptr, len, cap) = v.into_raw_parts();
+                println!("old: {:?}, new: {:?}", ptr, new_ptr);
+                self.len = len;
+                self.cap = cap;
+                Some(new_ptr)
+            });
+    }
+
+    pub fn get_slice(&self, str: usize, end: usize) -> AtomicSlice<T> {
+        AtomicSlice {
+            ptr: self.ptr.clone(),
+            str,
+            end,
+        }
+    }
+}
+
+pub(crate) struct AtomicSlice<T> {
+    ptr: Arc<AtomicPtr<T>>,
+    str: usize,
+    end: usize,
+}
+
+impl<T: Debug> Debug for AtomicSlice<T> {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        use std::sync::atomic::Ordering;
+        let mut d = f.debug_list();
+
+        let _ = self
+            .ptr
+            .fetch_update(Ordering::Relaxed, Ordering::Relaxed, |ptr| {
+                eprintln!("reading from: {:?}", ptr);
+                // todo
+                for i in self.str..=self.end {
+                    d.entry(&unsafe { ptr.add(i).read() });
+                }
+
+                None
+            });
+        d.finish()
+    }
+}
+
+impl<T> AtomicSlice<T> {
+    /// Copies the data into a vec
+    pub fn to_vec(&self) -> Vec<T> {
+        use std::sync::atomic::Ordering;
+
+        let mut v = Vec::with_capacity(self.end - self.str);
+
+        let _ = self
+            .ptr
+            .fetch_update(Ordering::Relaxed, Ordering::Relaxed, |ptr| {
+                eprintln!("reading from2: {:?}", ptr);
+                // todo
+                for i in self.str..=self.end {
+                    v.push(unsafe { ptr.add(i).read() });
+                }
+
+                None
+            });
+        v
+    }
+}
+
+#[cfg(test)]
+mod test {
+    use super::AtomicBuffer;
+
+    #[test]
+    fn atomic_ptr_follow() {
+        let mut buf = AtomicBuffer::new();
+
+        buf.push(3);
+        buf.push(2);
+        buf.push(3);
+        buf.push(7);
+        buf.push(5);
+        let s1 = buf.get_slice(1, 2); // 2, 3
+        let s2 = buf.get_slice(2, 4); // 3, 7, 5
+        assert_eq!(s1.to_vec(), vec![2, 3]);
+        assert_eq!(s2.to_vec(), vec![3, 7, 5]);
+        buf.push(5);
+        buf.push(8);
+        buf.push(5); //  <-- reallocation
+        buf.push(8);
+        assert_eq!(s1.to_vec(), vec![2, 3]);
+        assert_eq!(s2.to_vec(), vec![3, 7, 5]);
+
+        for i in 0..16 {
+            buf.push(i); //  <-- reallocation in here
+        }
+
+        assert_eq!(s1.to_vec(), vec![2, 3]);
+        assert_eq!(s2.to_vec(), vec![3, 7, 5]);
     }
 }

@@ -28,6 +28,7 @@ resu = { package = "error-stack", version = "0.4" }
 # nix = { version = "0.28", features = ["fs", "user"] }
 
 paris = { version = "1.5", features = ["macros", "no_logger"], optional = true }
+crossterm = "0.27"
 
 [features]
 log = ["paris"]

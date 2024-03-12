@@ -1,6 +1,6 @@
 use std::iter::Peekable;
 
-use crate::{log, shell::ShellState, Token};
+use crate::prelude::*;
 
 pub(crate) struct Walker<I>
 where
@@ -20,7 +20,12 @@ where
     }
 
     fn read_comment(&mut self) -> String {
-        todo!()
+        while let Some(token) = self.tokens.next() {
+            if matches!(token, Token::Newline) {
+                break;
+            }
+        }
+        String::new()
     }
 
     fn read_subshell(&mut self) -> Vec<Token> {
@@ -42,6 +47,35 @@ where
         }
         panic!("subshell missing closing braket");
     }
+
+    // Reads some text. This is by far the most powerful of the reads. The
+    // best way to understand this is that if it could be on either side of
+    // an equal sign and make sence then here it is.
+    // fn read_expression(&mut self) -> Vec<Expand> {
+    //     todo!()
+    // }
+
+    // Polls the next value from this token walker. A return value of `None`
+    // from this funtion means that there is not enough info to produce a
+    // token yet. A return value of `Some(None)` means there are no more
+    // tokens that can be produced.
+    //
+    // This will only happen if this has been called.
+    // pub fn poll_next(&mut self, next: Option<Token>) -> Option<Option<TreeItem>> {
+    //     todo!()
+    // }
+}
+
+impl TryFrom<Vec<Expand>> for TreeItem {
+    type Error = ();
+
+    fn try_from(value: Vec<Expand>) -> std::result::Result<Self, Self::Error> {
+        if value.is_empty() {
+            Err(())
+        } else {
+            Ok(TreeItem::Word(value))
+        }
+    }
 }
 
 impl<I> Iterator for Walker<I>
@@ -51,13 +85,11 @@ where
     type Item = TreeItem;
 
     fn next(&mut self) -> Option<Self::Item> {
-        let mut a = vec![];
+        let mut expr = vec![];
         while let Some(t) = self.tokens.peek() {
             match t {
                 Token::Newline => {
-                    if !a.is_empty() {
-                        return Some(TreeItem::Word(a));
-                    }
+                    has!(TreeItem::try_from(expr).ok());
                     let _ = self.tokens.next();
                     return Some(TreeItem::StatmentEnd);
                 }
@@ -66,19 +98,29 @@ where
                     let _ = self.tokens.next();
                     if let Some(Token::Pipe) = self.tokens.peek() {
                         let _ = self.tokens.next();
-                        return Some(TreeItem::And);
+                        return Some(TreeItem::Or);
                     }
                     return Some(TreeItem::Pipe);
                 }
-                Token::Amp => todo!(),
+                Token::Amp => {
+                    let _ = self.tokens.next();
+                    match self.tokens.peek() {
+                        Some(Token::Amp) => {
+                            let _ = self.tokens.next();
+                            return Some(TreeItem::And);
+                        }
+                        Some(_) => todo!(),
+                        None => return Some(TreeItem::Background),
+                    }
+                }
                 Token::SemiColor => todo!(),
                 Token::LeftArrow => todo!(),
                 Token::RightArrow => {
-                    if !a.is_empty() {
-                        a.push(Expand::Literal(String::from(">")));
-                        return Some(TreeItem::Word(a));
-                    }
-                    // redirect
+                    // dont consume the token if we already have something
+                    // buffered
+                    has!(TreeItem::try_from(expr).ok());
+
+                    // now it can go
                     let _ = self.tokens.next();
                     match self.tokens.peek() {
                         Some(Token::RightArrow) => {
@@ -101,10 +143,10 @@ where
                             let Some(Token::Ident(s)) = self.tokens.next() else {
                                 unreachable!()
                             };
-                            a.push(Expand::Var(s))
+                            expr.push(Expand::Var(s))
                         }
                         Some(Token::Space) => {
-                            a.push(Expand::Literal(String::from("$")));
+                            expr.push(Expand::Literal(String::from("$")));
                         }
                         Some(Token::OpenParen) => {
                             let _ = self.tokens.next();
@@ -122,21 +164,31 @@ where
                 Token::Glob => todo!(),
                 Token::OpenBraket => todo!(),
                 Token::CloseBraket => todo!(),
-                Token::Pound => return Some(TreeItem::Comment(self.read_comment())),
-                Token::Tilde => todo!(),
-                Token::Equal => todo!(),
+                Token::Pound => {
+                    let c = self.read_comment();
+                    info!("got comment: {:?}", c);
+                    return Some(TreeItem::Comment);
+                }
+                Token::Tilde => {
+                    warn!("doing bad expansion of any tilde to home");
+                    expr.push(Expand::Home);
+                }
+                Token::Equal => {
+                    // let a = TreeItem::Assign(expr, todo!());
+                    todo!()
+                }
                 Token::Percent => todo!(),
                 Token::Ident(_) => {
                     let Some(Token::Ident(s)) = self.tokens.next() else {
                         unreachable!()
                     };
-                    a.push(Expand::Literal(s));
+                    expr.push(Expand::Literal(s));
                 }
 
                 Token::Space => {
                     let _ = self.tokens.next();
-                    if !a.is_empty() {
-                        return Some(TreeItem::Word(a));
+                    if !expr.is_empty() {
+                        return Some(TreeItem::Word(expr));
                     }
                 }
 
@@ -156,7 +208,7 @@ pub(crate) enum TreeItem {
     /// Matching [`Equals`]. Can be used when assigning a variable or
     /// making an env for a command.
     /// can also sometimes be in arg position where it can just be stringifyed
-    Assign(Vec<Expand>, Vec<Expand>),
+    // Assign(Vec<Expand>, Vec<Expand>),
     Append,
     Redirect,
     /// `&`
@@ -170,7 +222,7 @@ pub(crate) enum TreeItem {
     /// `$( *[`ASTreeItem`] )`
     Subshell(Vec<Token>),
     /// `# *[`Token`]`
-    Comment(String),
+    Comment, // (String),
     /// a ';' of '\n'
     StatmentEnd,
 }
@@ -181,7 +233,7 @@ pub(crate) enum Expand {
     Var(String),
     /// `~`
     Home,
-    // Brace(String, Action, Vec<Expand>),
+    // Brace(String, ExpandAction, Vec<Expand>),
     // Sub(Vec<Expand>),
 }
 
@@ -190,13 +242,137 @@ impl Expand {
         match self {
             Expand::Literal(s) => s,
             Expand::Var(k) => {
-                log!("explanding key: {}", k);
-                let (var, rest) = state.get_env(&k);
-                format!("{}{}", var, rest)
+                info!("explanding key: {}", k);
+                // let (var, rest) = state.get_env(&k);
+                // format!("{}{}", var, rest)
+
+                state.get_env_exact(&k).unwrap_or(String::new())
             }
             Expand::Home => state.home().to_owned(),
+            // Expand::Brace(_, _, _) => todo!(),
         }
     }
+
+    //     fn expand_word(&mut self, expansions: Vec<Expand>) -> String {
+    //         let mut phrase = String::new();
+    //         for word in expansions {
+    //             match word {
+    //                 Literal(s) => phrase.push_str(&s),
+    //                 Tilde(word) => {
+    //                     let s = self.expand_word(word);
+    //                     if s.is_empty() || s.starts_with('/') {
+    //                         phrase.push_str(&env::var("HOME").unwrap());
+    //                         phrase.push_str(&s);
+    //                     } else {
+    //                         let mut strings = s.splitn(1, '/');
+    //                         let name = strings.next().unwrap();
+    //                         if let Some(user) = User::from_name(name).unwrap() {
+    //                             phrase.push_str(user.dir.as_os_str().to_str().unwrap());
+    //                             if let Some(path) = strings.next() {
+    //                                 phrase.push_str(path);
+    //                             }
+    //                         } else {
+    //                             phrase.push('~');
+    //                             phrase.push_str(name);
+    //                         }
+    //                     }
+    //                 }
+    //                 Var(s) => {
+    //                     phrase.push_str(&self.shell.borrow().get_var(&s).unwrap_or_default());
+    //                 }
+    //                 Brace(key, action, word) => {
+    //                     let val = self.shell.borrow().get_var(&key);
+    //                     match action {
+    //                         Action::UseDefault(null) => {
+    //                             if let Some(s) = val {
+    //                                 if s == "" && null {
+    //                                     phrase.push_str(&self.expand_word(word))
+    //                                 } else {
+    //                                     phrase.push_str(&s)
+    //                                 }
+    //                             } else {
+    //                                 phrase.push_str(&self.expand_word(word))
+    //                             }
+    //                         }
+    //                         Action::AssignDefault(null) => {
+    //                             if let Some(s) = val {
+    //                                 if s == "" && null {
+    //                                     let expanded = self.expand_word(word);
+    //                                     phrase.push_str(&expanded);
+    //                                     self.shell.set_var(key, expanded);
+    //                                 } else {
+    //                                     phrase.push_str(&s)
+    //                                 }
+    //                             } else {
+    //                                 let expanded = self.expand_word(word);
+    //                                 phrase.push_str(&expanded);
+    //                                 self.shell.set_var(key, expanded);
+    //                             }
+    //                         }
+    //                         Action::IndicateError(null) => {
+    //                             if let Some(s) = val {
+    //                                 if s == "" && null {
+    //                                     let message = self.expand_word(word);
+    //                                     if message.is_empty() {
+    //                                         eprintln!("rush: {}: parameter null", key);
+    //                                     } else {
+    //                                         eprintln!("rush: {}: {}", key, message);
+    //                                     }
+    //                                     if !self.shell.is_interactive() {
+    //                                         exit(1);
+    //                                     }
+    //                                 } else {
+    //                                     phrase.push_str(&s)
+    //                                 }
+    //                             } else {
+    //                                 let message = self.expand_word(word);
+    //                                 if message.is_empty() {
+    //                                     eprintln!("rush: {}: parameter not set", key);
+    //                                 } else {
+    //                                     eprintln!("rush: {}: {}", key, message);
+    //                                 }
+    //                                 if !self.shell.is_interactive() {
+    //                                     exit(1);
+    //                                 }
+    //                             }
+    //                         }
+    //                         Action::UseAlternate(null) => {
+    //                             if let Some(s) = val {
+    //                                 if s != "" || !null {
+    //                                     phrase.push_str(&self.expand_word(word))
+    //                                 }
+    //                             }
+    //                         }
+    //                         Action::RmSmallestSuffix => todo!(),
+    //                         Action::RmLargestSuffix => todo!(),
+    //                         Action::RmSmallestPrefix => todo!(),
+    //                         Action::RmLargestPrefix => todo!(),
+    //                         Action::StringLength => todo!(),
+    //                     }
+    //                 }
+    //                 Sub(e) => {
+    //                     todo!("{:?}", e)
+    //                     // // FIXME: `$(ls something)`, commands with params don't work atm
+    //                     // // for some reason
+    //                     //
+    //                     // let mut parser = Parser::new(vec!(Word(e)).into_iter(), Rc::clone(&self.shell));
+    //                     //
+    //                     // // This setup here allows me to do a surprisingly easy subshell.
+    //                     // // Though subshells typically seem to inherit everything I'm keeping in my
+    //                     // // `shell` variable at the moment?
+    //                     // if let Ok(command) = parser.get() {
+    //                     //     #[cfg(debug_assertions)] // Only include when not built with `--release` flag
+    //                     //     println!("\u{001b}[33m{:#?}\u{001b}[0m", command);
+    //                     //
+    //                     //     let mut output = Runner::new(Rc::clone(&parser.shell)).execute(command, true).unwrap();
+    //                     //     output = output.replace(char::is_whitespace, " ");
+    //                     //     phrase.push_str(output.trim());
+    //                     // }
+    //                 }
+    //             }
+    //         }
+    //         phrase
+    //     }
 }
 
 /// What the brace does expansion does:
@@ -205,7 +381,7 @@ impl Expand {
 /// For prefix/suffix, true for largest false for smallest
 #[derive(Debug, PartialEq, Eq)]
 pub enum ExpandAction {
-    // UseDefault(bool),
+    UseDefault(bool),
     // AssignDefault(bool),
     // IndicateError(bool),
     // UseAlternate(bool),
@@ -214,4 +390,6 @@ pub enum ExpandAction {
     // RmSmallestPrefix,
     // RmLargestPrefix,
     // StringLength,
+    /// ${var}
+    None,
 }

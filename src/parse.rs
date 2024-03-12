@@ -1,13 +1,13 @@
-use crate::shell::ShellState;
-use crate::util::OwnedCharBuffer;
-use crate::util::StaticMap;
-use crate::walker::TreeItem;
-use crate::{lexer::Lexer, walker::Walker};
+use crate::prelude::*;
+
+use crate::{
+    lexer::Lexer,
+    util::{OwnedCharBuffer, StaticMap},
+    walker::{TreeItem, Walker},
+};
 
 use std::iter::Peekable;
 use std::process::Stdio;
-
-use crate::prelude::*;
 
 /// The parser reads in tokens and converts them into commands.
 /// Parser takes in a token stream and outputs commands.
@@ -77,43 +77,12 @@ where
                     s.run(false).change_context(CmdError::SubShell)?;
                 }
                 TreeItem::StatmentEnd => return Ok(cmd.build()),
-                TreeItem::Assign(_, _) => todo!(),
+                // TreeItem::Assign(_, _) => todo!(),
                 TreeItem::Append => todo!(),
                 TreeItem::Redirect => todo!(),
                 TreeItem::Background => todo!(),
-                TreeItem::Comment(_) => todo!(),
+                TreeItem::Comment => {}
             }
-        }
-    }
-}
-
-/// Prompter reads user input. Then creates a [`Parser`] to turn it into
-/// commands.
-#[derive(Default)]
-pub(crate) struct Prompter {
-    commads: Option<Parser<Lexer<OwnedCharBuffer>>>,
-}
-
-impl Prompter {
-    pub fn next(&mut self, state: &ShellState) -> Option<Result<Cmd, CmdError>> {
-        use std::io::Write;
-
-        loop {
-            if let Some(cmd) = self.commads.as_mut().and_then(|i| i.next(state)) {
-                return Some(cmd);
-            }
-
-            print!("$> ");
-            io::stdout().flush().unwrap();
-            let s = std::io::stdin();
-            let mut line = String::new();
-            s.read_line(&mut line).unwrap();
-            // let line = std::io::stdin().lines().next()?.unwrap();
-
-            log!("got line: {}", line.trim());
-
-            let p = Parser::new(Lexer::new(OwnedCharBuffer::new(line)));
-            _ = self.commads.insert(p);
         }
     }
 }
@@ -146,104 +115,12 @@ pub enum Cmd {
     Empty,
 }
 
-impl Cmd {
-    // Internal only helper function to get command we really want to edit.
-    // fn get_last_mut(&mut self) -> &mut SimpleCmd {
-    //     match self {
-    //         Cmd::Simple(s) => s,
-    //         Cmd::Pipeline(_, c) => c.get_last_mut(),
-    //         Cmd::And(_, c) => c.get_last_mut(),
-    //         Cmd::Or(_, c) => c.get_last_mut(),
-    //         Cmd::Not(c) => c.get_last_mut(),
-    //     }
-    // }
-    //
-    // fn get_last(&self) -> &SimpleCmd {
-    //     match self {
-    //         Cmd::Simple(s) => s,
-    //         Cmd::And(_, c) => c.get_last(),
-    //         Cmd::Pipeline(_, _) => todo!(),
-    //         Cmd::Or(_, _) => todo!(),
-    //         Cmd::Not(_) => todo!(),
-    //     }
-    // }
-
-    //         let cmd = self.get_mut_builder();
-    //         match token {
-    //             Token::Pipe => todo!(),
-    //             Token::Amp => todo!(),
-    //             Token::SemiColor => {
-    //                 // if we are at the end of the statement we can ignore a
-    //                 // redundant semicolor
-    //                 let Some(cmd) = cmd else { return Ok(()) };
-    //                 *self = CmdBuilder::Statment(cmd.build_take()?);
-    //                 Ok(())
-    //             }
-    //             Token::LeftArrow => todo!(),
-    //             Token::RightArrow => todo!(),
-    //             Token::OpenParen => todo!(),
-    //             Token::CloseParen => todo!(),
-    //             Token::Doller => todo!(),
-    //             Token::BackTick(_) => todo!(),
-    //             Token::Escape(_) => todo!(),
-    //             Token::DoubleQuote(_) => todo!(),
-    //             Token::SingleQuote(_) => todo!(),
-    //             Token::Space => todo!(),
-    //             Token::Tab => todo!(),
-    //             Token::Newline => todo!(),
-    //             Token::Glob => todo!(),
-    //             Token::Huh => todo!(),
-    //             Token::OpenBraket => todo!(),
-    //             Token::Pound => todo!(),
-    //             Token::Tilde => todo!(),
-    //             Token::Equal => todo!(),
-    //             Token::Percent => todo!(),
-    //             Token::Ident(s) => match cmd {
-    //                 Some(c) => {
-    //                     c.push_ident(s);
-    //                     Ok(())
-    //                 }
-    //                 None => todo!(),
-    //             },
-    //         }
-    //     }
-
-    // Pushes a token to this command. Returns [`Ok(true)`] if this
-    // repersents a valid command.
-    // pub fn push(&mut self, token: Token) -> Result<(), CmdError> {
-    //     let cmd = self.get_last_mut();
-    //     match cmd {
-    //         Cmd::Simple(s) => match token {
-    //             Token::Ident(value) => Ok(s.args.push(value)),
-    //             _ => todo!(),
-    //         },
-    //         Cmd::Incomplete(icmd) => match token {
-    //             Token::Ident(name) => {
-    //                 // TODO: check if this is an env var assignment
-    //                 // Ex:
-    //                 // ```bash
-    //                 // RUST_BACKTRACE=1 cargo run
-    //                 // ```
-    //                 // ----------------
-    //                 //        |
-    //                 //       this
-    //                 Ok(*cmd = Cmd::Simple(icmd.build_take(name)))
-    //             }
-    //             t => Err(Report::new(CmdError::BadToken(t))),
-    //         },
-    //
-    //         _ => unreachable!(),
-    //     }
-    // }
-}
-
 /// The most basic command - it, its arguments, and its redirections.
 #[derive(Debug, Default, PartialEq)]
 pub struct SimpleCmd {
     pub cmd: String,
     pub args: Vec<String>,
     pub env: StaticMap<String, String>,
-    // pub streams: Streams,
 }
 
 #[derive(Debug)]
@@ -281,61 +158,9 @@ impl SimpleCmd {
     }
 }
 
-// let res = unsafe { libc::pipe2(fds.as_mut_ptr(), libc::O_CLOEXEC) };
-
-// use crate::helpers::{Fd, Shell};
-// use crate::lexer::Lexer;
-// use crate::lexer::Token::{self, *};
-// use crate::lexer::{
-//     Action,
-//     Expand::{self, *},
-//     Op,
-// };
 // use nix::unistd::User;
 // use os_pipe::pipe;
-// use std::cell::RefCell;
-// use std::collections::HashMap;
-// use std::env;
-// use std::io::Write;
-// use std::iter::Peekable;
-// use std::process::exit;
-// use std::rc::Rc;
-// use crate::runner::Runner;
-//
-//
 
-//
-// // Keeps track of io in one spot before it's put into a command
-// pub struct Io {
-//     stdin: Rc<RefCell<Fd>>,
-//     stdout: Rc<RefCell<Fd>>,
-//     stderr: Rc<RefCell<Fd>>,
-// }
-//
-// impl Io {
-//     fn new() -> Io {
-//         Io {
-//             stdin: Rc::new(RefCell::new(Fd::Stdin)),
-//             stdout: Rc::new(RefCell::new(Fd::Stdout)),
-//             stderr: Rc::new(RefCell::new(Fd::Stderr)),
-//         }
-//     }
-//
-//     fn set_stdin(&mut self, fd: Rc<RefCell<Fd>>) {
-//         self.stdin = fd;
-//     }
-//
-//     fn set_stdout(&mut self, fd: Rc<RefCell<Fd>>) {
-//         self.stdout = fd;
-//     }
-//
-//     fn set_stderr(&mut self, fd: Rc<RefCell<Fd>>) {
-//         self.stderr = fd;
-//     }
-// }
-//
-
-//
 // // The parser struct. Keeps track of current location in a peekable iter of tokens
 // pub struct Parser {
 //     shell: Shell,
@@ -450,133 +275,317 @@ impl SimpleCmd {
 //         }
 //     }
 //
-//     fn expand_word(&mut self, expansions: Vec<Expand>) -> String {
-//         let mut phrase = String::new();
-//         for word in expansions {
-//             match word {
-//                 Literal(s) => phrase.push_str(&s),
-//                 Tilde(word) => {
-//                     let s = self.expand_word(word);
-//                     if s.is_empty() || s.starts_with('/') {
-//                         phrase.push_str(&env::var("HOME").unwrap());
-//                         phrase.push_str(&s);
-//                     } else {
-//                         let mut strings = s.splitn(1, '/');
-//                         let name = strings.next().unwrap();
-//                         if let Some(user) = User::from_name(name).unwrap() {
-//                             phrase.push_str(user.dir.as_os_str().to_str().unwrap());
-//                             if let Some(path) = strings.next() {
-//                                 phrase.push_str(path);
-//                             }
-//                         } else {
-//                             phrase.push('~');
-//                             phrase.push_str(name);
-//                         }
-//                     }
-//                 }
-//                 Var(s) => {
-//                     phrase.push_str(&self.shell.borrow().get_var(&s).unwrap_or_default());
-//                 }
-//                 Brace(key, action, word) => {
-//                     let val = self.shell.borrow().get_var(&key);
-//                     match action {
-//                         Action::UseDefault(null) => {
-//                             if let Some(s) = val {
-//                                 if s == "" && null {
-//                                     phrase.push_str(&self.expand_word(word))
-//                                 } else {
-//                                     phrase.push_str(&s)
-//                                 }
-//                             } else {
-//                                 phrase.push_str(&self.expand_word(word))
-//                             }
-//                         }
-//                         Action::AssignDefault(null) => {
-//                             if let Some(s) = val {
-//                                 if s == "" && null {
-//                                     let expanded = self.expand_word(word);
-//                                     phrase.push_str(&expanded);
-//                                     self.shell.set_var(key, expanded);
-//                                 } else {
-//                                     phrase.push_str(&s)
-//                                 }
-//                             } else {
-//                                 let expanded = self.expand_word(word);
-//                                 phrase.push_str(&expanded);
-//                                 self.shell.set_var(key, expanded);
-//                             }
-//                         }
-//                         Action::IndicateError(null) => {
-//                             if let Some(s) = val {
-//                                 if s == "" && null {
-//                                     let message = self.expand_word(word);
-//                                     if message.is_empty() {
-//                                         eprintln!("rush: {}: parameter null", key);
-//                                     } else {
-//                                         eprintln!("rush: {}: {}", key, message);
-//                                     }
-//                                     if !self.shell.is_interactive() {
-//                                         exit(1);
-//                                     }
-//                                 } else {
-//                                     phrase.push_str(&s)
-//                                 }
-//                             } else {
-//                                 let message = self.expand_word(word);
-//                                 if message.is_empty() {
-//                                     eprintln!("rush: {}: parameter not set", key);
-//                                 } else {
-//                                     eprintln!("rush: {}: {}", key, message);
-//                                 }
-//                                 if !self.shell.is_interactive() {
-//                                     exit(1);
-//                                 }
-//                             }
-//                         }
-//                         Action::UseAlternate(null) => {
-//                             if let Some(s) = val {
-//                                 if s != "" || !null {
-//                                     phrase.push_str(&self.expand_word(word))
-//                                 }
-//                             }
-//                         }
-//                         Action::RmSmallestSuffix => todo!(),
-//                         Action::RmLargestSuffix => todo!(),
-//                         Action::RmSmallestPrefix => todo!(),
-//                         Action::RmLargestPrefix => todo!(),
-//                         Action::StringLength => todo!(),
-//                     }
-//                 }
-//                 Sub(e) => {
-//                     todo!("{:?}", e)
-//                     // // FIXME: `$(ls something)`, commands with params don't work atm
-//                     // // for some reason
-//                     //
-//                     // let mut parser = Parser::new(vec!(Word(e)).into_iter(), Rc::clone(&self.shell));
-//                     //
-//                     // // This setup here allows me to do a surprisingly easy subshell.
-//                     // // Though subshells typically seem to inherit everything I'm keeping in my
-//                     // // `shell` variable at the moment?
-//                     // if let Ok(command) = parser.get() {
-//                     //     #[cfg(debug_assertions)] // Only include when not built with `--release` flag
-//                     //     println!("\u{001b}[33m{:#?}\u{001b}[0m", command);
-//                     //
-//                     //     let mut output = Runner::new(Rc::clone(&parser.shell)).execute(command, true).unwrap();
-//                     //     output = output.replace(char::is_whitespace, " ");
-//                     //     phrase.push_str(output.trim());
-//                     // }
-//                 }
-//             }
-//         }
-//         phrase
-//     }
+
+// fn get_next_fd<I: Iterator<Item = char>>(lexer: &mut Lexer<I>) -> Result<Stdio, String> {
+//     let Some(Token::Amp) = lexer.next() else {
+//         panic!("rush: expected redirection location but found none");
+//     };
 //
-//     fn token_to_fd(&mut self, io: &Io) -> Result<Rc<RefCell<Fd>>, String> {
-//         let error = String::from("rush: expected redirection location but found none");
-//         if let Some(token) = self.lexer.next() {
-//             match token {
-//                 Op(Op::Ampersand) => {
-//                     if let Some(Integer(i)) = self.lexer.next() {
-//                         Ok(Rc::clone(match i {
-//                             0 => &io.stdin,
+//     let Some(Token::Int(i)) = lexer.next() else {
+//         panic!();
+//     };
 //
+//     Ok(Stdio::null())
+// }
+
+/// Prompter reads user input. Then creates a [`Parser`] to turn it into
+/// commands.
+#[derive(Default)]
+pub(crate) struct Prompter {
+    commads: Option<Parser<Lexer<OwnedCharBuffer>>>,
+}
+
+impl Prompter {
+    pub fn next(&mut self, state: &mut ShellState) -> Option<Result<Cmd, CmdError>> {
+        loop {
+            if let Some(cmd) = self.commads.as_mut().and_then(|i| i.next(state)) {
+                return Some(cmd);
+            }
+
+            crossterm::terminal::enable_raw_mode().unwrap();
+            let res = read_line("$> ", state);
+            crossterm::terminal::disable_raw_mode().unwrap();
+
+            let line = match res {
+                Ok(ReadlineOutput::Line(s)) => s,
+                Ok(ReadlineOutput::Exit) => {
+                    eprintln!("^C\r\n");
+                    continue;
+                }
+                Ok(ReadlineOutput::Eof) => return None,
+                Err(e) => {
+                    // this often comes after some shit so it is best to just do this
+                    error!("\r\n\n{:?}", e);
+                    continue;
+                }
+            };
+            state.add_history(line.trim_end());
+            log!("got line: {}", line.trim());
+
+            let p = Parser::new(Lexer::new(OwnedCharBuffer::new(line)));
+            _ = self.commads.insert(p);
+        }
+    }
+}
+
+#[derive(Debug)]
+enum PromptError {
+    /// Temporary value used to when for whatever reason I have not made the
+    /// code yet. This is better than a panic beacuse we restore the terminal
+    /// before continuing
+    Unimplemented(&'static str),
+
+    /// Error when writing data
+    Write,
+}
+impl fmt::Display for PromptError {
+    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
+        match self {
+            PromptError::Unimplemented(msg) => write!(f, "unimplemented!({:?})", msg),
+            PromptError::Write => f.write_str("failed to write data"),
+        }
+    }
+}
+impl Context for PromptError {}
+
+#[derive(Debug, Default, Clone)]
+struct LineBuffer {
+    /// Buffer that data is written to
+    buf: Vec<char>,
+    /// Position of cursor, if none then the cursor is at the end. Repersents
+    /// the distance from the left edge. Aka the start of the buffer is 0.
+    pos: Option<usize>,
+}
+
+impl fmt::Display for LineBuffer {
+    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
+        for c in self.buf.iter() {
+            std::fmt::Write::write_char(f, *c)?;
+        }
+        Ok(())
+    }
+}
+impl LineBuffer {
+    /// Adds a character to the buffer. Returns true if a render is needed.
+    fn push(&mut self, c: char) -> InsertResult {
+        if let Some(ofst) = self.pos.as_mut() {
+            if *ofst > self.buf.len() {
+                unreachable!("cursor out of buffer")
+            } else {
+                self.buf.insert(*ofst, c);
+                *ofst += 1;
+                InsertResult::Render
+            }
+        } else {
+            self.buf.push(c);
+            InsertResult::Render
+        }
+    }
+
+    /// Removes the character directly to the left of the cursor. Returns true
+    /// if a render is needed.
+    fn pop(&mut self) -> InsertResult {
+        if let Some(ofst) = self.pos.as_mut() {
+            if *ofst == 0 {
+                // there is nothing to remove at the start of the word
+                InsertResult::None
+            } else {
+                self.buf.remove(*ofst - 1);
+                *ofst -= 1;
+                InsertResult::Render
+            }
+        } else {
+            self.buf.pop();
+            InsertResult::Render
+        }
+    }
+
+    fn enter(&mut self) -> InsertResult {
+        if self.pos.is_none() {
+            self.buf.push('\n');
+            InsertResult::Done
+        } else {
+            todo!()
+        }
+    }
+
+    fn left(&mut self) -> InsertResult {
+        if let Some(ofst) = self.pos.as_mut() {
+            if *ofst == 0 {
+                InsertResult::None
+            } else {
+                *ofst -= 1;
+                InsertResult::Render
+            }
+        } else {
+            if self.buf.len() == 0 {
+                InsertResult::None
+            } else {
+                self.pos = Some(self.buf.len() - 1);
+                InsertResult::Render
+            }
+        }
+    }
+
+    fn right(&mut self) -> InsertResult {
+        if let Some(ofst) = self.pos.as_mut() {
+            *ofst += 1;
+            if *ofst >= self.buf.len() {
+                self.pos = None;
+            }
+            InsertResult::Render
+        } else {
+            InsertResult::None
+        }
+    }
+
+    /// Sets the buffer to the specified buffer
+    fn set(&mut self, buf: &str) -> InsertResult {
+        self.buf = buf.chars().collect();
+        if let Some(ofst) = self.pos {
+            if ofst >= self.buf.len() {
+                self.pos = None;
+            }
+        }
+        InsertResult::Render
+    }
+}
+
+enum InsertResult {
+    Render,
+    Done,
+    None,
+}
+
+enum ReadlineOutput {
+    Line(String),
+    /// When C-d is pressed on an empty time
+    Eof,
+    /// Corisponds to C-c
+    Exit,
+}
+
+/// Expects the terminal to be in raw mod when called.
+fn read_line(prompt: &str, state: &mut ShellState) -> Result<ReadlineOutput, PromptError> {
+    let mut stdout = std::io::stdout();
+
+    let mut buff = LineBuffer::default();
+
+    let mut hist = 0usize;
+
+    render_line(&mut stdout, prompt, &buff).unwrap();
+
+    use crossterm::event::Event as E;
+    use crossterm::event::KeyCode as K;
+    use crossterm::event::KeyModifiers as Km;
+
+    while let Ok(read) = crossterm::event::read() {
+        let result = match read {
+            E::Key(k) => match (k.code, k.modifiers) {
+                (K::Backspace, _) => buff.pop(),
+                (K::Enter, _) => {
+                    if buff.pos.is_some() {
+                        return Err(Report::new(PromptError::Unimplemented(
+                            "handle new line in middle of word",
+                        )));
+                    }
+
+                    buff.enter()
+                }
+                (K::Char(ch), Km::NONE) => buff.push(ch),
+                (K::Char('c'), Km::CONTROL) => {
+                    return Ok(ReadlineOutput::Exit);
+                }
+                (K::Char('d'), Km::CONTROL) => {
+                    if buff.buf.is_empty() {
+                        return Ok(ReadlineOutput::Eof);
+                    }
+                    InsertResult::None
+                }
+                (K::Char('l'), Km::CONTROL) => {
+                    // the call to render flushes these changes
+                    crossterm::queue!(
+                        stdout,
+                        crossterm::cursor::MoveTo(0, 0),
+                        crossterm::terminal::Clear(crossterm::terminal::ClearType::All)
+                    )
+                    .change_context(PromptError::Write)?;
+
+                    InsertResult::Render
+                }
+
+                (K::Left, _) => buff.left(),
+                (K::Right, _) => buff.right(),
+                (K::Up, _) => {
+                    hist += 1;
+                    if let Some(p) = state.get_history(hist) {
+                        buff.set(p);
+                        InsertResult::Render
+                    } else {
+                        hist -= 1;
+                        InsertResult::None
+                    }
+                }
+                (crossterm::event::KeyCode::Down, _) => {
+                    hist = hist.saturating_sub(1);
+                    if let Some(s) = state.get_history(hist) {
+                        buff.set(s)
+                    } else {
+                        if !buff.buf.is_empty() {
+                            buff.set("")
+                        } else {
+                            InsertResult::None
+                        }
+                    }
+                }
+                // crossterm::event::KeyCode::Tab => todo!(),
+                // crossterm::event::KeyCode::BackTab => todo!(),
+                (K::Esc, _) => {
+                    return Ok(ReadlineOutput::Eof);
+                }
+
+                // Most keys no one cares about
+                _ => InsertResult::None,
+            },
+            E::Paste(_) => unimplemented!(),
+            E::Resize(_, _) => InsertResult::Render,
+            E::FocusGained | E::FocusLost | E::Mouse(_) => InsertResult::None,
+        };
+
+        match result {
+            InsertResult::Render => {
+                render_line(&mut stdout, prompt, &buff).unwrap();
+            }
+            InsertResult::Done => {
+                break;
+            }
+            InsertResult::None => {}
+        }
+    }
+
+    print!("\r\n");
+
+    // buff implements `Display`
+    Ok(ReadlineOutput::Line(ToString::to_string(&buff)))
+}
+
+fn render_line(
+    stdout: &mut std::io::Stdout,
+    prompt: &str,
+    line: &LineBuffer,
+) -> Result<(), PromptError> {
+    let pos = line.pos.unwrap_or_else(|| line.buf.len()) + prompt.len();
+    let pos = pos as u16;
+
+    crossterm::execute!(
+        stdout,
+        // clear the line
+        crossterm::cursor::MoveToColumn(0),
+        crossterm::terminal::Clear(crossterm::terminal::ClearType::UntilNewLine),
+        // write the new line
+        crossterm::style::Print(format!("{}{}", prompt, line)),
+        // put the cursor where we want it
+        crossterm::cursor::MoveToColumn(pos),
+    )
+    .change_context(PromptError::Write)
+}

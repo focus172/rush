@@ -177,7 +177,7 @@ where
             let _ = self.line.next();
             Some(token)
         } else {
-            log!("{:?} looks like the start of and ident", next);
+            log!("{:?} looks like the start of an ident", next);
             Some(Token::Ident(self.read_ident()))
         }
     }
@@ -487,12 +487,11 @@ where
 mod test {
     use super::Lexer;
     use super::Token;
-    use crate::util::OwnedCharBuffer;
 
     #[test]
     fn lexer() {
         let input = String::from("exa -1 | grep cargo");
-        let mut lexer = Lexer::new(OwnedCharBuffer::new(input));
+        let mut lexer = Lexer::new(input.chars());
         let expected = [
             Token::Ident(String::from("exa")),
             Token::Space,

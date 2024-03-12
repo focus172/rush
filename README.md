@@ -11,6 +11,10 @@ contains `echo hello world` followed by 100,000,000 lines of comments will:
     - not have memory problems
     - will print 'hello' before the file finishes reading
 
+## Issue
+In a pipeline `a | b` if a exists an b doesnt then a will be run but never 
+culled as the program early returns
+
 ## To Do
 - [X] Simple command execution `ls -ltr`
 - [X] Pipes `exa | grep cargo`
