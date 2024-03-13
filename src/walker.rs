@@ -158,9 +158,10 @@ where
                 }
                 Token::BackTick => todo!(),
                 Token::DoubleQuote(_) => {
-                    let Some(Token::DoubleQuote(_)) = self.tokens.next() else {
+                    let Some(Token::DoubleQuote(v)) = self.tokens.next() else {
                         unreachable!()
                     };
+                    dbg!(&v);
                     todo!("have a parser that only expands variables not other thing")
                 }
                 Token::SingleQuote(_) => {

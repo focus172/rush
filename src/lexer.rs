@@ -6,10 +6,10 @@ use std::iter::Peekable;
 pub(crate) fn next_token<I: Iterator<Item = char>>(chars: &mut Peekable<I>) -> Option<Token> {
     match chars.next()? {
         '\"' => read_double_quotes(chars),
-        '\'' => read_single_quotes(chars),
+        '\'' => Some(read_single_quotes(chars)),
 
         '#' => todo!("read comment"),
-        '$' => todo!("get var or subshell"),
+        '$' => Some(read_doller(chars)),
         '`' => todo!("make subshell"),
 
         '|' => Some(Token::Pipe),
@@ -30,7 +30,17 @@ pub(crate) fn next_token<I: Iterator<Item = char>>(chars: &mut Peekable<I>) -> O
         ';' => Some(Token::SemiColor),
         '\t' => Some(Token::Tab),
         '\n' => Some(Token::Newline),
-        c => read_ident(chars, c),
+        c => Some(read_ident(chars, c)),
+    }
+}
+
+fn read_doller<I: Iterator<Item = char>>(chars: &mut Peekable<I>) -> Token {
+    match chars.peek().unwrap() {
+        '(' => todo!("read subshell"),
+        _ => {
+            // everything else is lazyily evaluated
+            Token::Doller
+        }
     }
 }
 
@@ -54,7 +64,10 @@ pub(crate) fn next_token<I: Iterator<Item = char>>(chars: &mut Peekable<I>) -> O
 // }
 
 /// Reads chars into a buffer until it encounters a special character.
-fn read_ident<I: Iterator<Item = char>>(chars: &mut Peekable<I>, c: char) -> Option<Token> {
+fn read_ident<I: Iterator<Item = char>>(chars: &mut Peekable<I>, c: char) -> Token {
+    info!("char {c:?} looks like an ident");
+
+    // characters that when seen end an ident
     fn is_special(c: &char) -> bool {
         matches!(
             c,
@@ -62,8 +75,7 @@ fn read_ident<I: Iterator<Item = char>>(chars: &mut Peekable<I>, c: char) -> Opt
         )
     }
 
-    let mut s = String::new();
-    s.push(c);
+    let mut s = String::from(c);
 
     while let Some(c) = chars.peek() {
         if is_special(c) {
@@ -72,28 +84,43 @@ fn read_ident<I: Iterator<Item = char>>(chars: &mut Peekable<I>, c: char) -> Opt
         s.push(*c);
         let _ = chars.next();
     }
-    Some(Token::Ident(s))
+    Token::Ident(s)
 }
 
 fn read_double_quotes<I: Iterator<Item = char>>(chars: &mut Peekable<I>) -> Option<Token> {
     let mut v = vec![];
 
     loop {
-        let t = chars.next();
-        match t {
-            Some('\"') => return Some(Token::DoubleQuote(v)),
+        match chars.next() {
+            Some('\"') => break,
             Some('\\') => v.push(read_escape(chars)),
-            Some(_) => todo!(),
+            Some('$') => v.push(read_doller(chars)),
+            Some(c) => v.push(read_ident(chars, c)),
             None => panic!("unclosed double quotes"),
         }
     }
+    Some(Token::DoubleQuote(v))
 }
 
-fn read_single_quotes<I: Iterator<Item = char>>(chars: &mut Peekable<I>) -> Option<Token> {
-    read_raw_until(chars, |c| c != '\'', true).map(Token::SingleQuote)
+fn read_single_quotes<I: Iterator<Item = char>>(chars: &mut I) -> Token {
+    info!("starting to read single quotes");
+    read_raw_until_with_match_and_escape(
+        chars,
+        |c| c == '\'',
+        |c, b| match c {
+            '\'' => b.push('\''),
+            c => {
+                b.push('\\');
+                b.push(c)
+            }
+        },
+        true,
+    )
+    .map(Token::SingleQuote)
+    .expect("unclosed single quote")
 }
 
-fn read_escape<I: Iterator<Item = char>>(chars: &mut Peekable<I>) -> Token {
+fn read_escape<I: Iterator<Item = char>>(chars: &mut I) -> Token {
     match chars.next() {
         Some('n') => Token::Ident(String::from("\n")),
         Some('\\') => Token::Ident(String::from("\\")),
@@ -106,68 +133,80 @@ fn read_escape<I: Iterator<Item = char>>(chars: &mut Peekable<I>) -> Token {
     }
 }
 
-/// Reads data while parsing the minimal amount until a condition has been
-/// reached.
-///
-/// if must=true then it must read a character that matches the pattern
-/// if must=false then this always returns Some
-fn read_raw_until<I, F>(chars: &mut Peekable<I>, cond: F, must: bool) -> Option<String>
+fn read_raw_until_with_match_and_escape<I, F, E>(
+    chars: &mut I,
+    cond: F,
+    escp: E,
+    must: bool,
+) -> Option<String>
 where
     I: Iterator<Item = char>,
     F: Fn(char) -> bool,
+    E: Fn(char, &mut String),
 {
     let mut word = String::new();
 
-    while let Some(c) = chars.peek() {
+    while let Some(c) = chars.next() {
         match c {
             '\\' => {
-                chars.next();
-                match chars.next() {
-                    Some('\n') => todo!(),
-                    Some('\'') => word.push('\''),
-                    Some(c) => {
-                        word.push('\\');
-                        word.push(c)
-                    }
-                    None => {}
+                if let Some(c) = chars.next() {
+                    escp(c, &mut word);
+                } else {
+                    word.push('\\');
+                    // break;
                 }
             }
-            c if cond(*c) => return Some(word),
-            _ => word.push(chars.next().unwrap()),
+            c if cond(c) => return Some(word),
+            c => {
+                info!("adding element {c:?}");
+                word.push(c);
+            }
         }
     }
     (!must).then_some(word)
 }
 
-/// A convience wrapped that just calls [`next_token`] as an iterator.
-pub struct Lexer<I>
+/// Reads data while parsing the minimal amount until a condition has been
+/// reached.
+///
+/// if must=true then it must read a character that matches the pattern
+/// if must=false then this always returns Some
+fn read_raw_until<I, F>(chars: &mut Peekable<I>, cond: F) -> String
 where
     I: Iterator<Item = char>,
+    F: Fn(char) -> bool,
 {
-    line: Peekable<I>,
+    fn read_raw_default_escapes(
+        char: char,
+        buff: &mut String, //
+    ) {
+        match char {
+            '\n' => buff.push('\n'),
+            // Some('\'') => word.push('\''),
+            c => {
+                buff.push('\\');
+                buff.push(c)
+            }
+        }
+    }
+
+    read_raw_until_with_match_and_escape(chars, cond, read_raw_default_escapes, false).unwrap()
 }
 
-impl<I> Lexer<I>
-where
-    I: Iterator<Item = char>,
-{
+/// A convience wrapped that just calls [`next_token`] as an iterator.
+pub struct Lexer<I: Iterator<Item = char>>(Peekable<I>);
+
+impl<I: Iterator<Item = char>> Lexer<I> {
     pub fn new(input: I) -> Lexer<I> {
-        Lexer {
-            // shell,
-            line: input.peekable(),
-        }
+        Lexer(input.peekable())
     }
 }
 
-impl<I> Iterator for Lexer<I>
-where
-    I: Iterator<Item = char>,
-{
+impl<I: Iterator<Item = char>> Iterator for Lexer<I> {
     type Item = Token;
 
     fn next(&mut self) -> Option<Self::Item> {
-        info!("poll");
-        next_token(&mut self.line)
+        next_token(&mut self.0)
     }
 }
 
