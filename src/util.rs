@@ -1,3 +1,5 @@
+#![allow(unused)]
+
 use std::{
     fmt::Debug,
     mem,
@@ -200,6 +202,27 @@ impl<T> AtomicSlice<T> {
                 None
             });
         v
+    }
+
+    /// The data cannot be acsess directly so it is required that functions
+    /// be passed in here so they can be run atomically.
+    ///
+    /// See [`AtomicPtr::fetch_update`] for more details.
+    pub fn with_slice<F>(&self, mut f: F)
+    where
+        F: FnMut(&[T]),
+    {
+        use std::sync::atomic::Ordering;
+
+        let _ = self
+            .ptr
+            .fetch_update(Ordering::Relaxed, Ordering::Relaxed, |ptr| {
+                let slc =
+                    unsafe { std::slice::from_raw_parts(ptr.add(self.str), self.end - self.str) };
+                f(slc);
+
+                None
+            });
     }
 }
 

@@ -6,13 +6,16 @@ The shell takes a parser and the parser takes a lexer, the lexer takes a data
 steam. Each component can be swapped for maximum reuse.
 
 ## Iterator
-Everything is made using iterators meaning that hypothetically a file that
-contains `echo hello world` followed by 100,000,000 lines of comments will:
+Although iterators are not used. The same concepts are This means that
+hypothetically a file that contains `echo hello world` followed by 100,000,000
+lines of comments will:
     - not have memory problems
     - will print 'hello' before the file finishes reading
 
+This is because commands are ran eagerly.
+
 ## Issue
-In a pipeline `a | b` if a exists an b doesnt then a will be run but never 
+In a pipeline `a | b` if a exists an b doesnt then a will be run but never
 culled as the program early returns
 
 ## To Do
@@ -29,19 +32,16 @@ culled as the program early returns
 - [ ] Shell builtins
    - [ ] Normal built-ins
       - [ ] `alias` `unalias`
-      - [ ] `cd`
+      - [X] `cd`
       - [ ] etc
    - [ ] Special built-ins
-      - [ ] `exit`
+      - [X] `exit`
       - [ ] `export`
       - [ ] `exec`
       - [ ] etc
 - [ ] Expansions
    - [ ] Tilde expansion `ls ~`
    - [ ] Parameter expansion
-      - [ ] Basic expansion `echo ${var:-other}`
-      - [ ] String length `echo ${#var}`
-      - [ ] Suffix/prefix removal `echo ${var%%pattern}`
    - [ ] Command substitution
    - [ ] Arithmetic expansion
 - [ ] Variables

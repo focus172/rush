@@ -104,7 +104,7 @@ impl From<Args> for ShellMode {
         } else if let Some(file) = value.file {
             // if we have and input file then run that
             Self::Run(PathBuf::from(file))
-        } else if atty::is(atty::Stream::Stdin) {
+        } else if crossterm::tty::IsTty::is_tty(&std::io::stdin()) {
             // if there is no input file and stdin is a tty then we are running
             // iteractivally
             Self::Interactive

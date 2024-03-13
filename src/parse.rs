@@ -309,7 +309,7 @@ impl Prompter {
             let line = match res {
                 Ok(ReadlineOutput::Line(s)) => s,
                 Ok(ReadlineOutput::Exit) => {
-                    eprintln!("^C\r\n");
+                    eprintln!("^C");
                     continue;
                 }
                 Ok(ReadlineOutput::Eof) => return None,
@@ -493,6 +493,7 @@ fn read_line(prompt: &str, state: &mut ShellState) -> Result<ReadlineOutput, Pro
                     buff.enter()
                 }
                 (K::Char(ch), Km::NONE) => buff.push(ch),
+                (K::Char(ch), Km::SHIFT) => buff.push(ch.to_ascii_uppercase()),
                 (K::Char('c'), Km::CONTROL) => {
                     return Ok(ReadlineOutput::Exit);
                 }

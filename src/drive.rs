@@ -8,8 +8,6 @@ use crate::{
 use std::os::fd::FromRawFd;
 use std::process::Stdio;
 
-use self::builtins::ShellBuiltin;
-
 #[derive(Debug)]
 pub enum DriverError {
     Spawn,
@@ -34,6 +32,8 @@ pub fn run_command(
     state: &mut ShellState,
 ) -> Result<Vec<Task>, DriverError> {
     log!("cmd is: {:?}", cmd);
+    use self::builtins::ShellBuiltin;
+
     match cmd {
         Cmd::Simple(SimpleCmd { cmd, args, env }) => match cmd.as_str() {
             "exit" => {

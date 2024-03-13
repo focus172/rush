@@ -16,19 +16,16 @@ codegen-units = 1
 panic = "abort"
 
 [dependencies]
-# libshards = { path = "../../crates/shardstypes/" }
 # os_pipe = "1.1"
+# duct = "0.13"
+# nix = { version = "0.28", features = ["fs", "user"] }
 
-atty = "0.2"
 libc = "0.2"
 clap = { version = "4", features = ["derive"] }
 resu = { package = "error-stack", version = "0.4" }
-
-# futures = "0.3"
-# nix = { version = "0.28", features = ["fs", "user"] }
-
 paris = { version = "1.5", features = ["macros", "no_logger"], optional = true }
 crossterm = "0.27"
+# libshards = { path = "../../crates/shardstypes/" }
 
 [features]
 log = ["paris"]

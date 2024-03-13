@@ -157,9 +157,18 @@ where
                     }
                 }
                 Token::BackTick => todo!(),
-                Token::Escape(_) => todo!(),
-                Token::DoubleQuote => todo!(),
-                Token::SingleQuote => todo!(),
+                Token::DoubleQuote(_) => {
+                    let Some(Token::DoubleQuote(_)) = self.tokens.next() else {
+                        unreachable!()
+                    };
+                    todo!("have a parser that only expands variables not other thing")
+                }
+                Token::SingleQuote(_) => {
+                    let Some(Token::SingleQuote(s)) = self.tokens.next() else {
+                        unreachable!()
+                    };
+                    expr.push(Expand::Literal(s))
+                }
                 Token::Tab => todo!(),
                 Token::Glob => todo!(),
                 Token::OpenBraket => todo!(),
@@ -191,6 +200,8 @@ where
                         return Some(TreeItem::Word(expr));
                     }
                 }
+                Token::Sub(_) => todo!(),
+                Token::Bang => todo!(),
 
                 // Cant Start an expression
                 Token::Huh => todo!(),
