@@ -28,26 +28,6 @@ where
         String::new()
     }
 
-    fn read_subshell(&mut self) -> Vec<Token> {
-        let mut seen = 0;
-        let mut goal = 1;
-        let mut tokn = vec![];
-
-        while let Some(token) = self.tokens.next() {
-            match token {
-                Token::OpenParen => goal += 1,
-                Token::CloseParen => {
-                    seen += 1;
-                    if seen >= goal {
-                        return tokn;
-                    }
-                }
-                t => tokn.push(t),
-            }
-        }
-        panic!("subshell missing closing braket");
-    }
-
     // Reads some text. This is by far the most powerful of the reads. The
     // best way to understand this is that if it could be on either side of
     // an equal sign and make sence then here it is.
@@ -148,10 +128,8 @@ where
                         Some(Token::Space) => {
                             expr.push(Expand::Literal(String::from("$")));
                         }
-                        Some(Token::OpenParen) => {
-                            let _ = self.tokens.next();
-                            return Some(TreeItem::Subshell(self.read_subshell()));
-                        }
+                        // this is handled in tokenization
+                        Some(Token::OpenParen) => unreachable!(),
                         Some(_) => todo!(),
                         None => todo!(),
                     }
@@ -162,7 +140,23 @@ where
                         unreachable!()
                     };
                     dbg!(&v);
-                    todo!("have a parser that only expands variables not other thing")
+                    let mut v = v.into_iter();
+                    let mut e = vec![];
+                    while let Some(t) = v.next() {
+                        match t {
+                            Token::Doller => {
+                                if let Some(Token::Ident(s)) = v.next() {
+                                    e.push(Expand::Var(s));
+                                } else {
+                                    e.push(Expand::Literal(String::from("")));
+                                }
+                            }
+                            Token::Ident(s) => e.push(Expand::Literal(s)),
+                            Token::Sub(_) => todo!("evaluate this shit"),
+                            _ => unreachable!("bad token in double quotes"),
+                        }
+                    }
+                    return Some(TreeItem::Word(e));
                 }
                 Token::SingleQuote(_) => {
                     let Some(Token::SingleQuote(s)) = self.tokens.next() else {
@@ -201,7 +195,12 @@ where
                         return Some(TreeItem::Word(expr));
                     }
                 }
-                Token::Sub(_) => todo!(),
+                Token::Sub(_) => {
+                    let Some(Token::Sub(s)) = self.tokens.next() else {
+                        unreachable!()
+                    };
+                    expr.push(Expand::Sub(s))
+                }
                 Token::Bang => todo!(),
 
                 // Cant Start an expression
@@ -231,8 +230,6 @@ pub(crate) enum TreeItem {
     And,
     /// `|`
     Pipe,
-    /// `$( *[`ASTreeItem`] )`
-    Subshell(Vec<Token>),
     /// `# *[`Token`]`
     Comment, // (String),
     /// a ';' of '\n'
@@ -246,7 +243,7 @@ pub(crate) enum Expand {
     /// `~`
     Home,
     // Brace(String, ExpandAction, Vec<Expand>),
-    // Sub(Vec<Expand>),
+    Sub(String),
 }
 
 impl Expand {
@@ -262,6 +259,13 @@ impl Expand {
             }
             Expand::Home => state.home().to_owned(),
             // Expand::Brace(_, _, _) => todo!(),
+            Expand::Sub(s) => {
+                let s = Shell::sourced(crate::lexer::Lexer::new(
+                    crate::util::OwnedCharBuffer::new(s),
+                ));
+                s.run(false).unwrap();
+                todo!("get shell output")
+            }
         }
     }
 

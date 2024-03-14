@@ -194,10 +194,18 @@ where
     /// When this is ran as a login shell it will refuse to panic or error.
     /// The shell will attempt to restart itself whenever some thing bad
     /// happens.
-    pub fn run(mut self, interactive: bool) -> Result<(), ShellError> {
+    pub fn run(self, live: bool) -> Result<(), ShellError> {
+        self.run_with_output(live, Streams::default()).map(|_| {})
+    }
+
+    pub fn run_with_output(
+        mut self,
+        live: bool,
+        streams: Streams,
+    ) -> Result<std::process::Output, ShellError> {
         while let Some(res) = self.cmmds.next(&mut self.state) {
             let cmd = {
-                match (res, interactive) {
+                match (res, live) {
                     (Ok(cmd), _) => cmd,
                     (Err(e), true) => {
                         eprintln!("{:?}", e);
@@ -209,7 +217,7 @@ where
 
             let res = run_command(cmd, Streams::default(), &mut self.state);
 
-            let handles = match (res, interactive) {
+            let handles = match (res, live) {
                 (Ok(a), _) => a,
                 (Err(e), true) => {
                     eprintln!("{:?}", e);
@@ -218,19 +226,25 @@ where
                 (Err(e), false) => return Err(e.change_context(ShellError::Spawn)),
             };
 
-            for h in handles {
+            for mut h in handles {
+                // loop {}
+                // let _ = h.poll();
                 self.state.prev = h.wait().change_context(ShellError::Spawn)?;
                 // .attach("task had internal error")?;
             }
 
             if self.state.exit {
                 log!("exiting beacuse flag was set");
-                return Ok(());
+                break;
             }
         }
         log!("no more commands.");
 
-        Ok(())
+        Ok(std::process::Output {
+            status: todo!(),
+            stdout: todo!(),
+            stderr: todo!(),
+        })
     }
 
     // pub fn next_prompt(&mut self, prompt: &str) -> Option<String> {

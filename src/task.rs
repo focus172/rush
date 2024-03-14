@@ -39,4 +39,14 @@ impl Task {
             Task::Builtin(code) => Ok(code),
         }
     }
+
+    pub fn poll(&mut self) -> std::task::Poll<Result<i32, TaskError>> {
+        match self {
+            Task::System(c) => {
+                c.try_wait();
+                todo!()
+            }
+            Task::Builtin(_) => todo!(),
+        }
+    }
 }

@@ -1,3 +1,4 @@
+use crate::parse::Fd;
 use crate::prelude::*;
 
 use crate::{
@@ -6,7 +7,6 @@ use crate::{
 };
 
 use std::os::fd::FromRawFd;
-use std::process::Stdio;
 
 #[derive(Debug)]
 pub enum DriverError {
@@ -73,10 +73,10 @@ pub fn run_command(
             success!("made pipes: {:?}", pipes);
 
             let mut sc = streams;
-            sc.stdout = unsafe { Stdio::from_raw_fd(pipes[1]) };
+            sc.stdout = unsafe { Fd::from_raw_fd(pipes[1]) };
 
             let sd = Streams {
-                stdin: unsafe { Stdio::from_raw_fd(pipes[0]) },
+                stdin: unsafe { Fd::from_raw_fd(pipes[0]) },
                 ..Default::default()
             };
 

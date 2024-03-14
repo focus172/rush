@@ -7,6 +7,7 @@ use crate::{
 };
 
 use std::iter::Peekable;
+use std::os::fd::{FromRawFd, OwnedFd, RawFd};
 use std::process::Stdio;
 
 /// The parser reads in tokens and converts them into commands.
@@ -72,10 +73,6 @@ where
                     let c = cmd.build();
                     return Ok(Cmd::Pipeline(Box::new(c), Box::new(self.get_next(state)?)));
                 }
-                TreeItem::Subshell(tokens) => {
-                    let s = Shell::sourced(tokens.into_iter());
-                    s.run(false).change_context(CmdError::SubShell)?;
-                }
                 TreeItem::StatmentEnd => return Ok(cmd.build()),
                 // TreeItem::Assign(_, _) => todo!(),
                 TreeItem::Append => todo!(),
@@ -123,21 +120,32 @@ pub struct SimpleCmd {
     pub env: StaticMap<String, String>,
 }
 
-#[derive(Debug)]
-pub struct Streams {
-    pub stdin: Stdio,
-    pub stdout: Stdio,
-    pub stderr: Stdio,
+#[derive(Debug, Default)]
+pub enum Fd {
+    /// Use the parents stdin and stdout. This is almost always what stderr is.
+    #[default]
+    Inherit,
+    Piped(OwnedFd),
 }
-
-impl Default for Streams {
-    fn default() -> Self {
-        Self {
-            stdin: Stdio::inherit(),
-            stdout: Stdio::inherit(),
-            stderr: Stdio::inherit(),
+impl From<Fd> for Stdio {
+    fn from(value: Fd) -> Self {
+        match value {
+            Fd::Inherit => Stdio::inherit(),
+            Fd::Piped(fd) => Stdio::from(fd),
         }
     }
+}
+impl FromRawFd for Fd {
+    unsafe fn from_raw_fd(fd: RawFd) -> Self {
+        Self::Piped(unsafe { OwnedFd::from_raw_fd(fd) })
+    }
+}
+
+#[derive(Debug, Default)]
+pub struct Streams {
+    pub stdin: Fd,
+    pub stdout: Fd,
+    pub stderr: Fd,
 }
 
 impl SimpleCmd {

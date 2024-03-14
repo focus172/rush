@@ -36,7 +36,22 @@ pub(crate) fn next_token<I: Iterator<Item = char>>(chars: &mut Peekable<I>) -> O
 
 fn read_doller<I: Iterator<Item = char>>(chars: &mut Peekable<I>) -> Token {
     match chars.peek().unwrap() {
-        '(' => todo!("read subshell"),
+        '(' => {
+            let _ = chars.next();
+            let s = read_raw_until(
+                chars,
+                |c| c == ')',
+                |c, b| {
+                    if c != ')' {
+                        b.push('\\');
+                    }
+                    b.push(')')
+                },
+                true,
+            )
+            .unwrap();
+            Token::Sub(s)
+        }
         _ => {
             // everything else is lazyily evaluated
             Token::Doller
@@ -104,9 +119,9 @@ fn read_double_quotes<I: Iterator<Item = char>>(chars: &mut Peekable<I>) -> Opti
 
 fn read_single_quotes<I: Iterator<Item = char>>(chars: &mut I) -> Token {
     info!("starting to read single quotes");
-    read_raw_until_with_match_and_escape(
+    read_raw_until(
         chars,
-        |c| c == '\'',
+        |c| matches!(c, '\''),
         |c, b| match c {
             '\'' => b.push('\''),
             c => {
@@ -133,12 +148,16 @@ fn read_escape<I: Iterator<Item = char>>(chars: &mut I) -> Token {
     }
 }
 
-fn read_raw_until_with_match_and_escape<I, F, E>(
-    chars: &mut I,
-    cond: F,
-    escp: E,
-    must: bool,
-) -> Option<String>
+/// Reads characters from the buffer unitl condition returns true. Consumes
+/// the character than matche. Provides a ecape squence handler where after the
+/// escape character is reacher '\' it then passes the next character to the
+/// function along with the buffer. that function then is expected to push to
+/// the buffer.
+///
+/// The must variable defines if the sequence must be matched at then end of
+/// input.
+/// When false, this function always returns [`Option::Some`].
+fn read_raw_until<I, F, E>(chars: &mut I, cond: F, escp: E, must: bool) -> Option<String>
 where
     I: Iterator<Item = char>,
     F: Fn(char) -> bool,
@@ -157,40 +176,10 @@ where
                 }
             }
             c if cond(c) => return Some(word),
-            c => {
-                info!("adding element {c:?}");
-                word.push(c);
-            }
+            c => word.push(c),
         }
     }
     (!must).then_some(word)
-}
-
-/// Reads data while parsing the minimal amount until a condition has been
-/// reached.
-///
-/// if must=true then it must read a character that matches the pattern
-/// if must=false then this always returns Some
-fn read_raw_until<I, F>(chars: &mut Peekable<I>, cond: F) -> String
-where
-    I: Iterator<Item = char>,
-    F: Fn(char) -> bool,
-{
-    fn read_raw_default_escapes(
-        char: char,
-        buff: &mut String, //
-    ) {
-        match char {
-            '\n' => buff.push('\n'),
-            // Some('\'') => word.push('\''),
-            c => {
-                buff.push('\\');
-                buff.push(c)
-            }
-        }
-    }
-
-    read_raw_until_with_match_and_escape(chars, cond, read_raw_default_escapes, false).unwrap()
 }
 
 /// A convience wrapped that just calls [`next_token`] as an iterator.
@@ -210,190 +199,106 @@ impl<I: Iterator<Item = char>> Iterator for Lexer<I> {
     }
 }
 
-// fn read_until(
-//     &mut self,
-//     consume: bool,
-//     keep_going: bool,
-//     split_on_space: bool,
-//     break_cond: impl Fn(char) -> bool,
-//     shell: &mut Shell,
-// ) -> Result<Vec<Expand>, String> {
-//     let mut expandables = Vec::new();
-//     let mut cur_word = String::new();
-//
-//     let mut next = self.peek_char();
-//     loop {
-//         match next {
-//             Some('\\') => {
-//                 self.next_char();
-//                 match self.next_char() {
-//                     Some('\n') => self.advance_line(shell)?,
-//                     Some(c) => cur_word.push(c),
-//                     None => (),
-//                 }
-//             }
-//             Some(c) if break_cond(*c) => {
-//                 // This just makes assignment easier
-//                 if *c == '=' {
-//                     cur_word.push(self.next_char().unwrap());
-//                     expandables.push(Literal(cur_word));
-//                     cur_word = String::new();
-//                 } else {
-//                     if consume {
-//                         self.next_char();
-//                     }
-//                     break;
-//                 }
-//             }
-//             Some(' ') if split_on_space => {
-//                 self.next_char();
-//                 if !cur_word.is_empty() {
-//                     expandables.push(Literal(cur_word));
-//                     cur_word = String::new();
-//                 }
-//             }
-//             Some('$') => {
-//                 if !cur_word.is_empty() {
-//                     expandables.push(Literal(cur_word));
-//                     cur_word = String::new();
-//                 }
-//                 self.next_char();
-//                 match self.peek_char() {
-//                     Some('{') => {
-//                         fn get_action(null: bool, c: Option<char>) -> Option<Action> {
-//                             match c {
-//                                 Some('-') => Some(Action::UseDefault(null)),
-//                                 Some('=') => Some(Action::AssignDefault(null)),
-//                                 Some('?') => Some(Action::IndicateError(null)),
-//                                 Some('+') => Some(Action::UseAlternate(null)),
-//                                 _ => None,
-//                             }
-//                         }
-//
-//                         self.next_char();
-//                         let param = self.read_raw_until(invalid_var, shell)?;
-//
-//                         let action = match self.next_char() {
-//                             Some(':') => get_action(true, self.next_char()),
-//                             Some('%') => {
-//                                 if let Some('%') = self.peek_char() {
-//                                     self.next_char();
-//                                     Some(Action::RmLargestSuffix)
-//                                 } else {
-//                                     Some(Action::RmSmallestSuffix)
-//                                 }
-//                             }
-//                             Some('#') => {
-//                                 if let Some('#') = self.peek_char() {
-//                                     self.next_char();
-//                                     Some(Action::RmLargestPrefix)
-//                                 } else {
-//                                     Some(Action::RmSmallestPrefix)
-//                                 }
-//                             }
-//                             Some(' ') => return Err(String::from("bad substitution")),
-//                             c => get_action(false, c),
-//                         };
-//
-//                         if let Some(a) = action {
-//                             let word = self.read_until(
-//                                 true,
-//                                 true,
-//                                 false,
-//                                 Box::new(|c| c == '}'),
-//                                 shell,
-//                             )?;
-//                             expandables.push(Brace(param, a, word));
-//                         } else {
-//                             expandables.push(Var(param));
-//                         }
-//                     }
-//                     Some('(') => {
-//                         self.next_char();
-//                         expandables.push(Sub(self.read_until(
-//                             true,
-//                             true,
-//                             true,
-//                             Box::new(|c| c == ')'),
-//                             shell,
-//                         )?));
-//                     }
-//                     Some('$') => {
-//                         // '$$' command doesn't play nicely with the reading here,
-//                         // but it's so simple I can just check for it here.
-//                         self.next_char();
-//                         expandables.push(Var(String::from("$")));
-//                     }
-//                     _ => {
-//                         expandables.push(Var(self.read_raw_until(invalid_var, shell)?));
-//                     }
-//                 }
-//             }
-//             Some('`') => {
-//                 // How often are backticks actually used for subshells?
-//                 // I really don't want to have to implement nested backtick subshells...
-//                 self.next_char();
-//                 expandables.push(Sub(self.read_until(
-//                     true,
-//                     true,
-//                     true,
-//                     Box::new(|c| c == '`'),
-//                     shell,
-//                 )?));
-//             }
-//             Some('~') => {
-//                 if !cur_word.is_empty() {
-//                     expandables.push(Literal(cur_word));
-//                     cur_word = String::new();
-//                 }
-//                 self.next_char();
-//
-//                 let tilde =
-//                     self.read_until(false, false, false, Box::new(invalid_var), shell)?;
-//                 expandables.push(Tilde(tilde));
-//             }
-//             Some('"') => {
-//                 if !cur_word.is_empty() {
-//                     expandables.push(Literal(cur_word));
-//                     cur_word = String::new();
-//                 }
-//                 self.next_char();
-//
-//                 let mut result =
-//                     self.read_until(true, true, false, Box::new(|c| c == '"'), shell)?;
-//                 if result.is_empty() {
-//                     expandables.push(Literal(String::new()));
-//                 } else {
-//                     expandables.append(&mut result);
-//                 }
-//             }
-//             Some('\'') => {
-//                 self.next_char();
-//                 let mut phrase = String::new();
-//                 loop {
-//                     match self.next_char() {
-//                         Some('\'') => break,
-//                         Some(c) => phrase.push(c),
-//                         None => self.advance_line(shell)?,
-//                     }
-//                 }
-//                 expandables.push(Literal(phrase));
-//             }
-//             Some(_) => cur_word.push(self.next_char().unwrap()),
-//             None => {
-//                 if keep_going {
-//                     self.advance_line(shell)?;
-//                 } else {
-//                     break;
-//                 }
-//             }
-//         }
-//         next = self.peek_char();
-//     }
+// Some('$') => {
 //     if !cur_word.is_empty() {
 //         expandables.push(Literal(cur_word));
+//         cur_word = String::new();
 //     }
-//     Ok(expandables)
+//     self.next_char();
+//     match self.peek_char() {
+//         Some('{') => {
+//             fn get_action(null: bool, c: Option<char>) -> Option<Action> {
+//                 match c {
+//                     Some('-') => Some(Action::UseDefault(null)),
+//                     Some('=') => Some(Action::AssignDefault(null)),
+//                     Some('?') => Some(Action::IndicateError(null)),
+//                     Some('+') => Some(Action::UseAlternate(null)),
+//                     _ => None,
+//                 }
+//             }
+//
+//             self.next_char();
+//             let param = self.read_raw_until(invalid_var, shell)?;
+//
+//             let action = match self.next_char() {
+//                 Some(':') => get_action(true, self.next_char()),
+//                 Some('%') => {
+//                     if let Some('%') = self.peek_char() {
+//                         self.next_char();
+//                         Some(Action::RmLargestSuffix)
+//                     } else {
+//                         Some(Action::RmSmallestSuffix)
+//                     }
+//                 }
+//                 Some('#') => {
+//                     if let Some('#') = self.peek_char() {
+//                         self.next_char();
+//                         Some(Action::RmLargestPrefix)
+//                     } else {
+//                         Some(Action::RmSmallestPrefix)
+//                     }
+//                 }
+//                 Some(' ') => return Err(String::from("bad substitution")),
+//                 c => get_action(false, c),
+//             };
+//
+//             if let Some(a) = action {
+//                 let word = self.read_until(
+//                     true,
+//                     true,
+//                     false,
+//                     Box::new(|c| c == '}'),
+//                     shell,
+//                 )?;
+//                 expandables.push(Brace(param, a, word));
+//             } else {
+//                 expandables.push(Var(param));
+//             }
+//         }
+//         Some('(') => {
+//             self.next_char();
+//             expandables.push(Sub(self.read_until(
+//                 true,
+//                 true,
+//                 true,
+//                 Box::new(|c| c == ')'),
+//                 shell,
+//             )?));
+//         }
+//         Some('$') => {
+//             // '$$' command doesn't play nicely with the reading here,
+//             // but it's so simple I can just check for it here.
+//             self.next_char();
+//             expandables.push(Var(String::from("$")));
+//         }
+//         _ => {
+//             expandables.push(Var(self.read_raw_until(invalid_var, shell)?));
+//         }
+//     }
+// }
+// Some('`') => {
+//     // How often are backticks actually used for subshells?
+//     // I really don't want to have to implement nested backtick subshells...
+//     self.next_char();
+//     expandables.push(Sub(self.read_until(
+//         true,
+//         true,
+//         true,
+//         Box::new(|c| c == '`'),
+//         shell,
+//     )?));
+// }
+//
+// Some('~') => {
+//     if !cur_word.is_empty() {
+//         expandables.push(Literal(cur_word));
+//         cur_word = String::new();
+//     }
+//     self.next_char();
+//
+//     let tilde =
+//         self.read_until(false, false, false, Box::new(invalid_var), shell)?;
+//     expandables.push(Tilde(tilde));
 // }
 
 /// Repersents a Token from the input. The input must outlive this value.
