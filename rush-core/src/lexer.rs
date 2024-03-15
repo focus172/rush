@@ -8,10 +8,10 @@ pub(crate) fn next_token<I: Iterator<Item = char>>(chars: &mut Peekable<I>) -> O
         '\"' => read_double_quotes(chars),
         '\'' => Some(read_single_quotes(chars)),
 
-        '#' => todo!("read comment"),
         '$' => Some(read_doller(chars)),
-        '`' => todo!("make subshell"),
+        '`' => Some(read_backtick(chars)),
 
+        '#' => Some(Token::Pound),
         '|' => Some(Token::Pipe),
         '>' => Some(Token::RightArrow),
         '<' => Some(Token::LeftArrow),
@@ -24,7 +24,7 @@ pub(crate) fn next_token<I: Iterator<Item = char>>(chars: &mut Peekable<I>) -> O
         '~' => Some(Token::Tilde),
         '=' => Some(Token::Equal),
         '%' => Some(Token::Percent),
-        ' ' => Some(Token::Space),
+        ' ' => Some(read_space(chars)),
         '&' => Some(Token::Amp),
         '?' => Some(Token::Huh),
         ';' => Some(Token::SemiColor),
@@ -32,6 +32,32 @@ pub(crate) fn next_token<I: Iterator<Item = char>>(chars: &mut Peekable<I>) -> O
         '\n' => Some(Token::Newline),
         c => Some(read_ident(chars, c)),
     }
+}
+
+fn read_space<I: Iterator<Item = char>>(chars: &mut Peekable<I>) -> Token {
+    match chars.peek() {
+        Some('#') => {
+            let _ = read_raw_until(chars, |c| c == '\n', |_, _| {}, false);
+            Token::Comment
+        }
+        _ => Token::Space,
+    }
+}
+
+fn read_backtick<I: Iterator<Item = char>>(chars: &mut Peekable<I>) -> Token {
+    let s = read_raw_until(
+        chars,
+        |c| c == '`',
+        |c, b| {
+            if c != '`' {
+                b.push('\\');
+            }
+            b.push('`')
+        },
+        true,
+    )
+    .unwrap();
+    Token::Sub(s)
 }
 
 fn read_doller<I: Iterator<Item = char>>(chars: &mut Peekable<I>) -> Token {
@@ -80,7 +106,7 @@ fn read_doller<I: Iterator<Item = char>>(chars: &mut Peekable<I>) -> Token {
 
 /// Reads chars into a buffer until it encounters a special character.
 fn read_ident<I: Iterator<Item = char>>(chars: &mut Peekable<I>, c: char) -> Token {
-    info!("char {c:?} looks like an ident");
+    log::info!("char {c:?} looks like an ident");
 
     // characters that when seen end an ident
     fn is_special(c: &char) -> bool {
@@ -118,7 +144,7 @@ fn read_double_quotes<I: Iterator<Item = char>>(chars: &mut Peekable<I>) -> Opti
 }
 
 fn read_single_quotes<I: Iterator<Item = char>>(chars: &mut I) -> Token {
-    info!("starting to read single quotes");
+    log::info!("starting to read single quotes");
     read_raw_until(
         chars,
         |c| matches!(c, '\''),
@@ -306,6 +332,7 @@ impl<I: Iterator<Item = char>> Iterator for Lexer<I> {
 pub enum Token {
     /// `|`
     Pipe,
+    Comment,
     /// `&`
     Amp,
     /// `;`
@@ -320,8 +347,6 @@ pub enum Token {
     CloseParen,
     /// `$`
     Doller,
-    /// '`'
-    BackTick,
     /// `"text"`
     ///
     /// Perserves the literal value of the string with the exception of:
@@ -371,6 +396,7 @@ impl fmt::Display for Token {
     fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
         match self {
             Token::Pipe => f.write_str("|"),
+            Token::Comment => f.write_str(" # <comment>"),
             Token::Amp => f.write_str("&"),
             Token::SemiColor => f.write_str(";"),
             Token::LeftArrow => f.write_str("<"),
@@ -378,7 +404,6 @@ impl fmt::Display for Token {
             Token::OpenParen => f.write_str("("),
             Token::CloseParen => f.write_str(")"),
             Token::Doller => f.write_str("$"),
-            Token::BackTick => f.write_str("`"),
             Token::DoubleQuote(v) => {
                 f.write_str("\"")?;
                 for t in v {

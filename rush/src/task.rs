@@ -33,7 +33,7 @@ impl Task {
                     .change_context(TaskError::Wait)?
                     .code()
                     .unwrap_or(-127);
-                log!("process ({}): exit {}", pid, code);
+                log::info!("process ({}): exit {}", pid, code);
                 Ok(code)
             }
             Task::Builtin(code) => Ok(code),
@@ -43,7 +43,7 @@ impl Task {
     pub fn poll(&mut self) -> std::task::Poll<Result<i32, TaskError>> {
         match self {
             Task::System(c) => {
-                c.try_wait();
+                let _ = c.try_wait();
                 todo!()
             }
             Task::Builtin(_) => todo!(),

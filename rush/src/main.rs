@@ -1,7 +1,6 @@
 #![feature(let_chains, vec_into_raw_parts)]
 
 pub mod drive;
-pub mod lexer;
 pub mod parse;
 pub mod prelude;
 pub mod shell;
@@ -13,14 +12,14 @@ use crate::prelude::*;
 
 use std::{fs, process::ExitCode};
 
-use crate::lexer::Lexer;
+use rush_core::lexer::Lexer;
 use std::{env, path::PathBuf};
 
 fn main() -> ExitCode {
     use std::io::Read;
     let exit = match ShellMode::get() {
         ShellMode::Run(path) => {
-            info!("running file: {:?}", path);
+            log::info!("running file: {:?}", path);
 
             let data = fs::read_to_string(path).unwrap();
             let input = data.chars();
@@ -28,7 +27,7 @@ fn main() -> ExitCode {
             Shell::sourced(Lexer::new(input)).run(false)
         }
         ShellMode::Eval => {
-            warn!("the implementation for reading from stdin is shitty.");
+            log::warn!("the implementation for reading from stdin is shitty.");
             let mut buf = String::new();
             // let a = AtomicBuffer::new();
 
@@ -39,12 +38,12 @@ fn main() -> ExitCode {
             Shell::sourced(Lexer::new(input)).run(false)
         }
         ShellMode::Interactive => {
-            info!("running interactive session");
+            log::info!("running interactive session");
 
             Shell::interactive().run(true)
         }
         ShellMode::Login => {
-            info!("running login session");
+            log::info!("running login session");
 
             // Logins shells read /etc/profile and ~/.profile
             // and then function as normal interactive shells
@@ -52,7 +51,7 @@ fn main() -> ExitCode {
             Shell::login().run(true)
         }
         ShellMode::Command(cmd) => {
-            info!("running command: {:?}", cmd);
+            log::info!("running command: {:?}", cmd);
 
             let input = cmd.chars().peekable();
 

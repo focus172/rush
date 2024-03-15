@@ -50,7 +50,7 @@ impl ShellState {
     /// second. if the variable doesn't exist it will return ("", key).
     pub fn get_env<'a>(&'a self, key: &'a str) -> (String, &'a str) {
         for i in 0..key.len() {
-            log!("trying key: {}", &key[0..i + 1]);
+            log::info!("trying key: {}", &key[0..i + 1]);
             if let Some(v) = self.get_env_exact(&key[0..i + 1]) {
                 return (v, &key[i + 1..]);
             }
@@ -121,6 +121,7 @@ where
     state: ShellState,
     // taskp: Vec<Task>,
 }
+
 impl Shell<std::iter::Empty<Token>> {
     pub fn interactive() -> Shell<std::iter::Empty<Token>> {
         Shell {
@@ -201,7 +202,7 @@ where
     pub fn run_with_output(
         mut self,
         live: bool,
-        streams: Streams,
+        _streams: Streams,
     ) -> Result<std::process::Output, ShellError> {
         while let Some(res) = self.cmmds.next(&mut self.state) {
             let cmd = {
@@ -226,7 +227,7 @@ where
                 (Err(e), false) => return Err(e.change_context(ShellError::Spawn)),
             };
 
-            for mut h in handles {
+            for h in handles {
                 // loop {}
                 // let _ = h.poll();
                 self.state.prev = h.wait().change_context(ShellError::Spawn)?;
@@ -234,17 +235,18 @@ where
             }
 
             if self.state.exit {
-                log!("exiting beacuse flag was set");
+                log::info!("exiting beacuse flag was set");
                 break;
             }
         }
-        log!("no more commands.");
+        log::info!("no more commands.");
 
-        Ok(std::process::Output {
-            status: todo!(),
-            stdout: todo!(),
-            stderr: todo!(),
-        })
+        // Ok(std::process::Output {
+        //     status: todo!(),
+        //     stdout: todo!(),
+        //     stderr: todo!(),
+        // })
+        todo!()
     }
 
     // pub fn next_prompt(&mut self, prompt: &str) -> Option<String> {

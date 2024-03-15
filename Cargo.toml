@@ -1,31 +1,7 @@
-[package]
-name = "rush"
-version = "0.1.0"
-authors = ["focus172 <evan.stokdyk@gmail.com>"]
-edition = "2021"
+[workspace]
+members = ["rush", "rush-core", "rush-shard"]
+resolver = "2"
 
-# [lib]
-# crate-type = ["cdylib"]
-
-# We want this to be small in production
-[profile.release]
-strip = true      # Automatically strip symbols from the binary.
-opt-level = "z"   # Optimize for size.
-lto = true
-codegen-units = 1
-panic = "abort"
-
-[dependencies]
-# os_pipe = "1.1"
-# duct = "0.13"
-# nix = { version = "0.28", features = ["fs", "user"] }
-
-libc = "0.2"
-clap = { version = "4", features = ["derive"] }
+[workspace.dependencies]
+libshards = { path = "../../crates/libshards/" }
 resu = { package = "error-stack", version = "0.4" }
-paris = { version = "1.5", features = ["macros", "no_logger"], optional = true }
-crossterm = "0.27"
-# libshards = { path = "../../crates/shardstypes/" }
-
-[features]
-log = ["paris"]

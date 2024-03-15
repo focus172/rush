@@ -1,0 +1,25 @@
+[package]
+name = "rush"
+version = "0.1.0"
+authors = ["focus172 <evan.stokdyk@gmail.com>"]
+edition = "2021"
+
+# We want this to be small in production
+[profile.release]
+strip = true      # Automatically strip symbols from the binary.
+opt-level = "z"   # Optimize for size.
+lto = true
+codegen-units = 1
+panic = "abort"
+
+[dependencies]
+rush-core = { path = "../rush-core/" }
+# os_pipe = "1.1"
+# duct = "0.13"
+# nix = { version = "0.28", features = ["fs", "user"] }
+
+resu.workspace = true
+log.workspace = true
+libc = "0.2"
+clap = { version = "4", features = ["derive"] }
+crossterm = "0.27"

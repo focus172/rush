@@ -31,13 +31,13 @@ pub fn run_command(
     streams: Streams,
     state: &mut ShellState,
 ) -> Result<Vec<Task>, DriverError> {
-    log!("cmd is: {:?}", cmd);
+    log::info!("cmd is: {:?}", cmd);
     use self::builtins::ShellBuiltin;
 
     match cmd {
         Cmd::Simple(SimpleCmd { cmd, args, env }) => match cmd.as_str() {
             "exit" => {
-                log!("running exit command");
+                log::info!("running exit command");
                 // TODO: fuse the stdin fd to stdout so anything in this
                 // pipe line ignores this call.
                 // This should be done for all builtins.
@@ -45,7 +45,7 @@ pub fn run_command(
             }
             "cd" => Ok(vec![Task::Builtin(builtins::Cd::run(&args, state))]),
             cmd => {
-                log!("Running command: [{}, {:?}]", cmd, args);
+                log::info!("Running command: [{}, {:?}]", cmd, args);
 
                 let child = std::process::Command::new(cmd)
                     .args(args)
@@ -70,7 +70,7 @@ pub fn run_command(
                 return err.change_context(DriverError::Pipe);
             }
 
-            success!("made pipes: {:?}", pipes);
+            log::info!("made pipes: {:?}", pipes);
 
             let mut sc = streams;
             sc.stdout = unsafe { Fd::from_raw_fd(pipes[1]) };

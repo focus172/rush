@@ -171,8 +171,6 @@ impl<T: Debug> Debug for AtomicSlice<T> {
         let _ = self
             .ptr
             .fetch_update(Ordering::Relaxed, Ordering::Relaxed, |ptr| {
-                eprintln!("reading from: {:?}", ptr);
-                // todo
                 for i in self.str..=self.end {
                     d.entry(&unsafe { ptr.add(i).read() });
                 }

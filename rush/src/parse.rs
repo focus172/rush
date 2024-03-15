@@ -1,10 +1,9 @@
+use rush_core::lexer::Lexer;
+use rush_core::walker::{TreeItem, Walker};
+
 use crate::prelude::*;
 
-use crate::{
-    lexer::Lexer,
-    util::{OwnedCharBuffer, StaticMap},
-    walker::{TreeItem, Walker},
-};
+use crate::util::{OwnedCharBuffer, StaticMap};
 
 use std::iter::Peekable;
 use std::os::fd::{FromRawFd, OwnedFd, RawFd};
@@ -33,7 +32,7 @@ where
         // when there are no tokens left return
         self.tokens.peek()?;
 
-        log!("getting next command.");
+        log::info!("getting next command.");
 
         Some(self.get_next(state))
     }
@@ -44,7 +43,7 @@ where
             let Some(token) = self.tokens.next() else {
                 return Ok(cmd.build());
             };
-            log!("got token: {:?}", token);
+            log::info!("got token: {:?}", token);
 
             // Todo: things build args and then spaces deliminate them.
             // This way args can contain variables and other as many tokens
@@ -52,13 +51,13 @@ where
 
             match token {
                 TreeItem::Word(v) => {
-                    let a =
-                        v.into_iter()
-                            .map(|e| e.expand(state))
-                            .fold(String::new(), |mut s, e| {
-                                s.push_str(&e);
-                                s
-                            });
+                    let a = v.into_iter().map(|e| crate::walker::expand(e, state)).fold(
+                        String::new(),
+                        |mut s, e| {
+                            s.push_str(&e);
+                            s
+                        },
+                    );
                     cmd.push_ident(a);
                 }
                 TreeItem::Or => {
@@ -323,12 +322,12 @@ impl Prompter {
                 Ok(ReadlineOutput::Eof) => return None,
                 Err(e) => {
                     // this often comes after some shit so it is best to just do this
-                    error!("\r\n\n{:?}", e);
+                    log::error!("\r\n\n{:?}", e);
                     continue;
                 }
             };
             state.add_history(line.trim_end());
-            log!("got line: {}", line.trim());
+            log::info!("got line: {}", line.trim());
 
             let p = Parser::new(Lexer::new(OwnedCharBuffer::new(line)));
             _ = self.commads.insert(p);
@@ -425,13 +424,11 @@ impl LineBuffer {
                 *ofst -= 1;
                 InsertResult::Render
             }
+        } else if self.buf.is_empty() {
+            InsertResult::None
         } else {
-            if self.buf.len() == 0 {
-                InsertResult::None
-            } else {
-                self.pos = Some(self.buf.len() - 1);
-                InsertResult::Render
-            }
+            self.pos = Some(self.buf.len() - 1);
+            InsertResult::Render
         }
     }
 
@@ -539,12 +536,10 @@ fn read_line(prompt: &str, state: &mut ShellState) -> Result<ReadlineOutput, Pro
                     hist = hist.saturating_sub(1);
                     if let Some(s) = state.get_history(hist) {
                         buff.set(s)
+                    } else if !buff.buf.is_empty() {
+                        buff.set("")
                     } else {
-                        if !buff.buf.is_empty() {
-                            buff.set("")
-                        } else {
-                            InsertResult::None
-                        }
+                        InsertResult::None
                     }
                 }
                 // crossterm::event::KeyCode::Tab => todo!(),
@@ -583,7 +578,7 @@ fn render_line(
     prompt: &str,
     line: &LineBuffer,
 ) -> Result<(), PromptError> {
-    let pos = line.pos.unwrap_or_else(|| line.buf.len()) + prompt.len();
+    let pos = line.pos.unwrap_or(line.buf.len()) + prompt.len();
     let pos = pos as u16;
 
     crossterm::execute!(
